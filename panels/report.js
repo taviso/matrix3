@@ -695,7 +695,7 @@ function populateTrustGroups() {
 
 async function updateReport() {
     let tab = await sidepanel.getActiveTab();
-    await populateOriginList(userOrigin ?? originList.value);
+    await populateOriginList(userOrigin);
     await refreshTable(originList.value);
     populateServerPolicy();
     populateTrustGroups();
