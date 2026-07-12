@@ -20,7 +20,7 @@
         {
           "header": "Content-Security-Policy",
           "operation": "set",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; media-src 'self' blob:; worker-src 'none'; report-uri https://_matrix3.internal/csp-report"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; media-src 'self' blob:; fetch-src 'self'; worker-src 'none'; report-uri https://_matrix3.internal/csp-report"
         }
       ]
     },
