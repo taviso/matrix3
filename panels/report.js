@@ -556,7 +556,8 @@ async function setCurrentRules(hostName)
 
 async function populateOriginList(preferredDomain) {
     let tab = await sidepanel.getActiveTab();
-    let frames = await chrome.webNavigation.getAllFrames({tabId: tab.id}) ?? [];
+    let frames = (await chrome.webNavigation.getAllFrames({tabId: tab.id}) ?? [])
+                     .filter(f => f.documentLifecycle === "active");
 
     let domains = new Map();
     let topDomain;
