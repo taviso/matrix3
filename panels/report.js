@@ -32,7 +32,20 @@ try {
 const directivesTable = document.querySelector("table#sources")
 const sandboxTable = document.querySelector("table#sandbox")
 
-const originList = document.querySelector("select#frames")
+const originList = document.querySelector("div#frames")
+
+Object.defineProperties(originList, {
+    value: {
+        get() { return this.querySelector('button.active')?.dataset.value ?? ''; },
+        set(v) {
+            this.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+            this.querySelector(`button[data-value="${v}"]`)?.classList.add('active');
+        }
+    },
+    protocol: {
+        get() { return this.querySelector('button.active')?.dataset.protocol; }
+    }
+})
 const headerList = document.querySelector("textarea#servercsp")
 
 let currentServerPolicies = [];
@@ -199,7 +212,10 @@ async function applyTrustGroup(checked) {
 document.getElementById('trust').addEventListener("click", () => applyTrustGroup(true));
 document.getElementById('untrust').addEventListener("click", () => applyTrustGroup(false));
 
-originList.addEventListener("change", () => {
+originList.addEventListener("click", (e) => {
+    let btn = e.target.closest("button");
+    if (!btn) return;
+    originList.value = btn.dataset.value;
     userOrigin = originList.value;
     refreshTable(originList.value);
     populateServerPolicy();
@@ -564,13 +580,14 @@ async function populateOriginList(preferredDomain) {
     originList.replaceChildren();
 
     for (let [domain, protocol] of domains) {
-        let opt = document.createElement("option");
-        opt.textContent = domain;
-        opt.value = domain;
-        opt.dataset.protocol = protocol;
-        opt.selected = target == domain;
-        originList.add(opt);
+        let btn = document.createElement("button");
+        btn.textContent = domain;
+        btn.dataset.value = domain;
+        btn.dataset.protocol = protocol;
+        originList.appendChild(btn);
     }
+
+    originList.value = target;
 }
 
 async function populateServerPolicy() {
@@ -629,8 +646,7 @@ async function refreshViolations(domain) {
 // Allowlist http(s) only; everything else (chrome:, about:, devtools:, etc.)
 // can't be reached by declarativeNetRequest so the controls would lie.
 function updateOriginScopeState() {
-    let opt = originList.selectedOptions[0];
-    let proto = opt?.dataset.protocol;
+    let proto = originList.protocol;
 
     document.body.classList.remove("inert");
 

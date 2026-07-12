@@ -175,3 +175,21 @@ span.origin-name {
     display: none;
 }
 
+/* Make the origin selector look like tabs */
+div#frames button {
+    background: transparent;
+    border: 1px solid currentColor;
+    border-radius: 3px 3px 0 0;
+    margin-bottom: -1px;
+}
+
+div#frames button.active {
+    background: Canvas;
+    border-bottom-color: Canvas;
+}
+
+div#frames button:not(.active):hover {
+    background: color-mix(in srgb, transparent, CanvasText 8%);
+    cursor: pointer;
+}
+

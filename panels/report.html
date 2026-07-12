@@ -9,12 +9,6 @@
 <select id="panel"></select>
 <h1>Report</h1>
 <div>
-    <p>
-        <label for=frames>Origin</label>
-        <select id=frames></select>
-    </p>
-</div>
-<div>
     <button id="commit" title="Make these settings dynamic (persistent) rules">Commit</button>
     <button id="uncommit" title="Demote the dynamic rule for this host to a session rule">Uncommit</button>
     <button id="abandon" title="Discard session changes, restore the dynamic rule">Abandon</button>
@@ -34,7 +28,10 @@
 </div>
 <div>
     <table id="sources">
-        <caption>Source Directives</caption>
+        <caption>
+            Source Directives
+            <div id=frames></div>
+        </caption>
         <colgroup>
             <col id=col-src>
             <col id=col-default-src>
