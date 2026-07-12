@@ -181,6 +181,10 @@ div#frames button {
     border: 1px solid currentColor;
     border-radius: 3px 3px 0 0;
     margin-bottom: -1px;
+    max-width: 16ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 div#frames button.active {

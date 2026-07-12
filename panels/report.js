@@ -582,6 +582,7 @@ async function populateOriginList(preferredDomain) {
     for (let [domain, protocol] of domains) {
         let btn = document.createElement("button");
         btn.textContent = domain;
+        btn.title = domain;
         btn.dataset.value = domain;
         btn.dataset.protocol = protocol;
         originList.appendChild(btn);
