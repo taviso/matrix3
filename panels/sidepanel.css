@@ -3,15 +3,29 @@
 }
 
 button {
-    min-width: 5.8em;
+    min-width: 6em;
 }
 
 caption {
     text-align: left;
 }
 
+input[type="text"],
 select {
     width: 100%;
+    flex: 1;
+}
+
+/* Keep button rows and input+button rows on a single line */
+:is(div, p):not(#frames):has(> button) {
+    display: flex;
+    gap: 0.3em;
+}
+
+/* Cap buttons at 6em, but allow them to shrink in a narrow panel */
+:is(div, p):not(#frames):has(> button) button {
+    flex: 0 1 6em;
+    min-width: min-content;
 }
 
 table, th, td {
@@ -166,10 +180,6 @@ label[for="servercsp"] {
     font-size: medium;
 }
 
-select#trustgroup {
-    width: calc(100% - 6.3em);
-}
-
 div#serverpolicy:has(button:disabled) {
     display: none;
 }
@@ -215,10 +225,6 @@ table#dynamic tr td:last-of-type {
     max-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-input#filter {
-    width: 100%;
 }
 
 /* Groups panel */
