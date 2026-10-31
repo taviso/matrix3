@@ -238,9 +238,14 @@ section.group table.sources tbody th {
     text-align: left;
 }
 
+section.group tr:not(:hover) button.delorigin {
+    display: none;
+}
+
 button.delorigin,
 button.delgroup {
     min-width: 1em;
+    line-height: 1;
     padding: 0 0.2em;
     margin-right: 0.5em;
 }
