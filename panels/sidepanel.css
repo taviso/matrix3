@@ -176,10 +176,19 @@ table#dynamic tr {
     font-family: monospace;
 }
 
+table#session td,
+table#dynamic td {
+    white-space: nowrap;
+}
+
 /* The rule policy text */
 table#session tr td:last-of-type,
 table#dynamic tr td:last-of-type {
     font-size: smaller;
+    width: 100%;
+    max-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 input#filter {
