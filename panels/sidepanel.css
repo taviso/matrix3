@@ -96,6 +96,12 @@ body.show-advanced :is(col, tr).advanced {
 }
 
 /* Report panel */
+/* Commit and Uncommit are mutually exclusive; show whichever is applicable */
+button#commit:has(+ button#uncommit:not(:disabled)),
+button#uncommit:disabled {
+    display: none;
+}
+
 td:has(input.violation) {
     background-color: orange;
 }
@@ -142,6 +148,16 @@ body.inert :is(button, table, textarea, #trustcontrol) {
 /* Hide the trust control when there are no groups to choose from. */
 div#trustcontrol:not(:has(option)) {
     display: none;
+}
+
+label[for="trustgroup"],
+label[for="servercsp"] {
+    display: block;
+    font-size: medium;
+}
+
+select#trustgroup {
+    width: calc(100% - 6.5em);
 }
 
 div#serverpolicy:has(button:disabled) {
