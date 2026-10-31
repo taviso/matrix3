@@ -64,10 +64,11 @@ function updateGroupsDisplay() {
         g.dataset.name = name;
         g.querySelector('.group-name').textContent = name;
         g.querySelector('.delgroup').addEventListener('click', () => deleteGroup(name));
-        g.querySelector('.addorigin').addEventListener('click', () => addOrigin(name, input.value));
+        g.querySelector('.addorigin').addEventListener('click', () => addOrigin(name, input));
+        input.addEventListener('input', () => input.setCustomValidity(''));
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter')
-                addOrigin(name, input.value);
+                addOrigin(name, input);
         });
 
         for (let [origin, dirs] of Object.entries(origins)) {
@@ -111,13 +112,16 @@ async function deleteGroup(name) {
     updateGroupsDisplay();
 }
 
-async function addOrigin(group, origin) {
-    origin = origin.trim();
+async function addOrigin(group, input) {
+    let origin = input.value.trim();
 
     if (!origin)
         return;
-    if (!sidepanel.isValidSource(origin))
+    if (!sidepanel.isValidSource(origin)) {
+        input.setCustomValidity(input.title);
+        input.reportValidity();
         return;
+    }
     if (origin in options.groups[group])
         return;
 
