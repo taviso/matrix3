@@ -2,7 +2,13 @@ import * as sidepanel from '/include/sidepanel.js'
 import Options from '/include/options.js'
 
 const optionElements = document.querySelectorAll(".option");
+const policyRange = document.getElementById("defaultpolicy");
 const options = await Options.get();
+
+function updatePolicyTitle() {
+    let opt = policyRange.list?.querySelector(`option[value="${policyRange.value}"]`);
+    policyRange.title = opt?.label ?? "";
+}
 
 function syncOptionChanges(event) {
     let val = event.target.value;
@@ -13,7 +19,7 @@ function syncOptionChanges(event) {
         val = parseInt(val);
 
     options[event.target.id] = val;
-    chrome.storage.sync.set({ options: options });
+    Options.save();
     sidepanel.applyOptions();
 }
 
@@ -23,13 +29,15 @@ function updateOptions() {
     for (let el of optionElements) {
         if (el.type === "checkbox")
             el.checked = options[el.id];
-        else if (options[el.id])
+        else if (options[el.id] !== undefined)
             el.value = options[el.id];
     }
+    updatePolicyTitle();
 }
 
 // Watch for changes, then sync them to the options object.
 optionElements.forEach(el => el.addEventListener("change", syncOptionChanges));
+policyRange.addEventListener("input", updatePolicyTitle);
 
 Options.addUpdateListener(() => updateOptions());
 updateOptions();

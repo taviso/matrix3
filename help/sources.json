@@ -48,12 +48,7 @@
     {
       "name": "*",
       "regex": "^\\*$",
-      "description": "Allows loading resources from any network origin, but not data:, blob:, or filesystem: URLs."
-    },
-    {
-      "name": "* data: blob:",
-      "regex": "^\\* data: blob:$",
-      "description": "A generic source substituted when the browser blocked a resource but withheld its address for privacy reasons."
+      "description": "Allows loading resources from any network origin (but not data:, blob:, or filesystem: URLs). Substituted when the browser blocks a cross-origin redirect and withholds its address for privacy."
     },
     {
       "name": "https:",

@@ -62,35 +62,35 @@ table#sandbox tbody th {
     white-space: nowrap;
 }
 
-div:has(> #sources) {
+div:has(> table.sources) {
     overflow-x: auto;
 }
 
-table#sources th {
+table.sources th {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-table#sources tbody th {
+table.sources tbody th {
     max-width: calc(18ch + max(100vw - 55ch, 0ch));
     font-family: monospace;
 }
 
 /* hilight active column */
-table#sources:has(td:nth-child(2):hover)  col:nth-child(2),
-table#sources:has(td:nth-child(3):hover)  col:nth-child(3),
-table#sources:has(td:nth-child(4):hover)  col:nth-child(4),
-table#sources:has(td:nth-child(5):hover)  col:nth-child(5),
-table#sources:has(td:nth-child(6):hover)  col:nth-child(6),
-table#sources:has(td:nth-child(7):hover)  col:nth-child(7),
-table#sources:has(td:nth-child(8):hover)  col:nth-child(8),
-table#sources:has(td:nth-child(9):hover)  col:nth-child(9),
-table#sources:has(td:nth-child(10):hover) col:nth-child(10),
-table#sources:has(td:nth-child(11):hover) col:nth-child(11),
-table#sources:has(td:nth-child(12):hover) col:nth-child(12),
-table#sources:has(td:nth-child(13):hover) col:nth-child(13),
-table#sources tr:hover {
+table.sources:has(td:nth-child(2):hover)  col:nth-child(2),
+table.sources:has(td:nth-child(3):hover)  col:nth-child(3),
+table.sources:has(td:nth-child(4):hover)  col:nth-child(4),
+table.sources:has(td:nth-child(5):hover)  col:nth-child(5),
+table.sources:has(td:nth-child(6):hover)  col:nth-child(6),
+table.sources:has(td:nth-child(7):hover)  col:nth-child(7),
+table.sources:has(td:nth-child(8):hover)  col:nth-child(8),
+table.sources:has(td:nth-child(9):hover)  col:nth-child(9),
+table.sources:has(td:nth-child(10):hover) col:nth-child(10),
+table.sources:has(td:nth-child(11):hover) col:nth-child(11),
+table.sources:has(td:nth-child(12):hover) col:nth-child(12),
+table.sources:has(td:nth-child(13):hover) col:nth-child(13),
+table.sources tr:hover {
     background-color: color-mix(in srgb, transparent, CanvasText 18%);
 }
 
@@ -106,7 +106,7 @@ table#sandbox:not(:has(input#sandbox-enabled:checked)) tbody {
     visibility: collapse;
 }
 
-table#sources:has(td.advanced input:is(:checked, .violation)) col.advanced {
+table.sources:has(td.advanced input:is(:checked, .violation)) col.advanced {
     visibility: visible;
 }
 
@@ -163,11 +163,23 @@ input#filter {
 }
 
 /* The remove button on the groups panel */
+table.sources tbody th:has(button.delorigin) {
+    text-align: left;
+}
 button.delorigin {
     min-width: 1em;
 }
 span.origin-name {
-    padding-left: 1em;
+    padding-left: 0.5em;
+}
+section.group[data-name="Ignore"] button.delgroup {
+    display: none;
+}
+section.group[data-name="Ignore"] h3.group-name::after {
+    content: "Sources and directives checked here are hidden from violation reports.";
+    display: block;
+    font-weight: normal;
+    font-size: smaller;
 }
 
 /* Hide the divider after the last-push line until it has content */

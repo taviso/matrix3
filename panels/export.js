@@ -84,8 +84,9 @@ loadElement.addEventListener("click", async () => {
     await RulesManager.replaceAllRules(blob.session ?? [], blob.dynamic ?? []);
 
     if (blob.options) {
+        Options.migrate(blob.options);
         Object.assign(options, blob.options);
-        await chrome.storage.sync.set({ options });
+        await Options.save();
     }
 
     // base is always-enabled and skipped by setEnabledRulesets anyway, but

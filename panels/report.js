@@ -8,26 +8,10 @@ import { MessageTypes } from '/include/commands.js'
 let RulesManager = sidepanel.RulesManager;
 let options = await Options.get();
 
-// Load any helpful hints and tooltips we have.
-let helpData = { sources: [], directives: {}, sandbox: {} };
-
-try {
-    const [srcs, dirs, sbx] = await Promise.all([
-        fetch(chrome.runtime.getURL('help/sources.json')).then(r => r.json()),
-        fetch(chrome.runtime.getURL('help/directives.json')).then(r => r.json()),
-        fetch(chrome.runtime.getURL('help/sandbox.json')).then(r => r.json())
-    ]);
-    helpData.sources = srcs.sources;
-    helpData.directives = dirs.directives;
-    helpData.sandbox = sbx.sandbox;
-
-    // Attach tooltips to the static sandbox checkboxes.
-    document.querySelectorAll("td input.sandbox").forEach(box => {
-        box.title = helpData.sandbox[box.id] ?? "";
-    });
-} catch (e) {
-    console.warn("report", "failed to load help data", e);
-}
+// Attach tooltips to the static sandbox checkboxes.
+document.querySelectorAll("td input.sandbox").forEach(box => {
+    box.title = sidepanel.helpData.sandbox[box.id] ?? "";
+});
 
 const directivesTable = document.querySelector("table#sources")
 const sandboxTable = document.querySelector("table#sandbox")
@@ -63,7 +47,7 @@ const kNonceOrHashFull = new RegExp(kNonceOrHashPrefix.source + /[A-Za-z0-9+/_-]
 // Find all origins currently loaded in the tab that fall under the given scope.
 async function getOriginsInScope(scope) {
     let tab = await sidepanel.getActiveTab();
-    let frames = await chrome.webNavigation.getAllFrames({tabId: tab.id}) ?? [];
+    let frames = await chrome.webNavigation.getAllFrames({tabId: tab.id}).catch(() => []) ?? [];
     let origins = new Set([`https://${scope}`]);
 
     for (let f of frames) {
@@ -178,39 +162,32 @@ function unblockReportedViolations() {
     directivesTable.querySelectorAll("input.violation").forEach(b => b.checked = true);
     setCurrentRules(originList.value);
 }
-// Apply (or remove) the selected group's origins to default-src, script-src,
-// style-src, and img-src. default-src covers other directives via inheritance;
-// the rest are commonly set explicitly in strict policies so they need their
-// own entries.
-async function applyTrustGroup(checked) {
+// Apply the selected group's sources and checked directives to the table.
+function applyTrustGroup() {
     let name = document.getElementById('trustgroup').value;
-    let dirs = ["default-src", "script-src", "style-src", "img-src"];
-    let origins;
+    let group;
 
     if (!name)
         return;
 
-    origins = options.groups?.[name] ?? [];
+    group = options.groups?.[name] ?? {};
 
-    for (let origin of origins) {
+    for (let [origin, dirs] of Object.entries(group)) {
+        addSourceCheckboxRow(origin);
         for (let dir of dirs) {
-            let box = findCheckbox(origin, dir, checked);
+            let box = findCheckbox(origin, dir, true);
             if (!box)
                 continue;
-            box.checked = checked;
+            box.checked = true;
             enforceNoneLeader(box);
         }
     }
-
-    if (!checked)
-        await fallbackToFirstParty();
 
     utils.sortTable(directivesTable, compareSourceRows);
     setCurrentRules(originList.value);
 }
 
-document.getElementById('trust').addEventListener("click", () => applyTrustGroup(true));
-document.getElementById('untrust').addEventListener("click", () => applyTrustGroup(false));
+document.getElementById('applygroup').addEventListener("click", () => applyTrustGroup());
 
 originList.addEventListener("click", (e) => {
     let btn = e.target.closest("button");
@@ -289,14 +266,11 @@ function addSourceCheckboxRow(source, container = directivesTable.tBodies[0])
     let existing = Array.from(container.children).find(r => r.cells[0]?.textContent === source);
     let cols = utils.getTableColProps(directivesTable, "id");
     let colNodes = directivesTable.querySelectorAll("colgroup col");
-    let ignored = options.groups?.Ignore ?? [];
     let row;
     let title;
 
     if (existing)
         return existing;
-    if (ignored.includes(source))
-        return null;
 
     row = document.createElement("tr");
     title = document.createElement("th");
@@ -311,17 +285,7 @@ function addSourceCheckboxRow(source, container = directivesTable.tBodies[0])
         box.type = "checkbox";
         box.checked = false;
         box.className = "rule";
-
-        // Add any hint data we have for this combination.
-        let sourceHelp = helpData.sources.find(h => new RegExp(h.regex).test(source));
-        let directiveHelp = helpData.directives[cols[i]];
-
-        if (directiveHelp)
-            box.title += `${cols[i]}: ${directiveHelp}`;
-        if (directiveHelp && sourceHelp)
-            box.title += `\n\n`;
-        if (sourceHelp && directiveHelp)
-            box.title += sourceHelp.description;
+        box.title = sidepanel.getRuleTooltip(source, cols[i]);
 
         if (colNodes[i].classList.contains("advanced"))
             cell.classList.add("advanced");
@@ -418,15 +382,7 @@ function compareSourceRows(a, b) {
 
 function collapseDirective(directive)
 {
-    switch (directive) {
-        case "script-src-elem":
-        case "script-src-attr":
-            return "script-src";
-        case "style-src-elem":
-        case "style-src-attr":
-            return "style-src";
-    }
-    return directive;
+    return Policy.collapseDirective(directive);
 }
 
 async function getCurrentRules(hostName, container)
@@ -469,12 +425,21 @@ async function getCurrentRules(hostName, container)
     }
 }
 
+function isIgnored(source, directive)
+{
+    let dirs = options.groups?.Ignore?.[source];
+    return dirs?.includes("default-src") || dirs?.includes(directive);
+}
+
 function setCurrentViolations(data, container)
 {
     for (let directive in data) {
         let dir = collapseDirective(directive);
-        for (let src of data[directive])
+        for (let src of data[directive]) {
+            if (isIgnored(src, dir))
+                continue;
             setSourceCheckboxClass(src, dir, "violation", container);
+        }
     }
 }
 
@@ -556,7 +521,7 @@ async function setCurrentRules(hostName)
 
 async function populateOriginList(preferredDomain) {
     let tab = await sidepanel.getActiveTab();
-    let frames = (await chrome.webNavigation.getAllFrames({tabId: tab.id}) ?? [])
+    let frames = (await chrome.webNavigation.getAllFrames({tabId: tab.id}).catch(() => []) ?? [])
                      .filter(f => f.documentLifecycle === "active");
 
     let domains = new Map();
@@ -720,7 +685,7 @@ async function updateReport() {
     updateOriginScopeState();
 
     // If the user has opened the report, clear any icon badge.
-    if (tab) chrome.action.setBadgeText({ text: '', tabId: tab.id });
+    if (tab) chrome.action.setBadgeText({ text: '', tabId: tab.id }).catch(() => {});
 }
 
 chrome.webNavigation.onCommitted.addListener(async (details) => {

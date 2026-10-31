@@ -59,16 +59,18 @@ disabled. You can still manually enable them.
 </p>
 <h2>Groups</h2>
 <p>
-A group is a named bundle of origins you frequently want to trust together,
-for example a group containing the CDNs you allow on most sites. Define
-groups in the <b>Groups</b> page, then in the <b>Report</b> page pick the
-group and click <b>Trust</b> to allow all its origins for the current host
-at once. Click <b>Untrust</b> to remove them.
+A group is a named bundle of sources and directives you frequently want to
+apply together, for example a group containing the CDNs you allow on most
+sites. Define groups and check the desired directives for each source in the
+<b>Groups</b> page, then in the <b>Report</b> page pick the group and click
+<b>Apply</b> to add its sources and check those directives for the current
+host at once.
 </p>
 <p>
-The <b>Ignore</b> group is special: any origin you add to it is hidden from
-the <b>Report</b> page entirely. Use this for noisy trackers that you would
-never allow and don't want spamming the source list.
+The <b>Ignore</b> group is special: any source and directive you check in it
+(or all directives if <i>default-src</i> is checked) is hidden from violation
+reporting on the <b>Report</b> page. Use this for noisy trackers that you
+would never allow and don't want spamming the source list.
 </p>
 <h2>Export</h2>
 <p>
