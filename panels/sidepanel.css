@@ -106,7 +106,7 @@ table.sources tr:hover {
 }
 
 /* Reveal advanced directive columns when any advanced cell is checked or has a violation */
-table.sources:has(td.advanced input:is(:checked, .violation)) :is(col, th, td).advanced {
+table.sources:has(td.advanced input:is(:checked, :indeterminate, .violation)) :is(col, th, td).advanced {
     display: revert;
 }
 
@@ -269,10 +269,25 @@ textarea#export {
 
 /* Help panel */
 summary {
-    font-size: 1.5em;
     font-weight: bold;
     margin-block: 0.5em;
     cursor: pointer;
+}
+
+body > details > summary {
+    font-size: 1.5em;
+}
+
+details details {
+    margin-left: 1em;
+}
+
+details table.sources tbody th {
+    text-align: left;
+}
+
+details table.sources input {
+    pointer-events: none;
 }
 
 details > [id] {

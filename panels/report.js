@@ -167,11 +167,13 @@ function applyTrustGroup() {
 
     for (let [origin, dirs] of Object.entries(group)) {
         addSourceCheckboxRow(origin);
-        for (let dir of dirs) {
+        for (let entry of dirs) {
+            let enable = !entry.startsWith('!');
+            let dir = enable ? entry : entry.slice(1);
             let box = findCheckbox(origin, dir, true);
             if (!box)
                 continue;
-            box.checked = true;
+            box.checked = enable;
             enforceNoneLeader(box);
         }
     }
@@ -416,6 +418,8 @@ async function getCurrentRules(hostName, container)
 function isIgnored(source, directive)
 {
     let dirs = options.groups?.Ignore?.[source];
+    if (dirs?.includes(`!${directive}`))
+        return false;
     return dirs?.includes("default-src") || dirs?.includes(directive);
 }
 

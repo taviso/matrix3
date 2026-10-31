@@ -2,10 +2,42 @@
 <head>
     <title>Help</title>
     <meta charset="UTF-8">
-    <script src="/include/sidepanel.js" type="module"></script>
+    <script src="help.js" type="module"></script>
     <link rel="stylesheet" href="sidepanel.css">
 </head>
 <body>
+<template id="example-template">
+    <table class="sources">
+        <colgroup>
+            <col class=col-src>
+            <col class=col-default-src>
+            <col class=col-script-src>
+            <col class=col-style-src>
+            <col class=col-img-src>
+            <col class=col-frame-src>
+            <col class=col-font-src>
+            <col class=col-media-src>
+            <col class=col-connect-src>
+            <col class=col-worker-src>
+        </colgroup>
+        <thead>
+            <tr>
+                <th id=src title="Source">Source</th>
+                <th id=default-src title="default-src">📌</th>
+                <th id=script-src title="script-src">📜</th>
+                <th id=style-src title="style-src">🦚</th>
+                <th id=img-src title="img-src">🖼️</th>
+                <th id=frame-src title="frame-src">🪟</th>
+                <th id=font-src title="font-src">🔤</th>
+                <th id=media-src title="media-src">📽️</th>
+                <th id=connect-src title="connect-src">🔌</th>
+                <th id=worker-src title="worker-src">🔧</th>
+            </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+</template>
 <select id="panel"></select>
 <h1>Help</h1>
 <p class="subtitle">
@@ -60,6 +92,32 @@ replaces your selection with the server's policy; <b>Merge</b> adds the
 server's sources to your selection. Nonces and hashes are imported unchecked so
 <i>'unsafe-inline'</i> remains effective unless you enable them manually.
 </p>
+<h3>Examples</h3>
+<details>
+<summary>Unblock a resource that a site needs</summary>
+<p>
+When a site tries to load a script from a third-party, its cell is highlighted
+in orange. Check the orange box and click <b>Reload</b> to allow it:
+</p>
+<div>
+    <table class="sources">
+        <tr data-source="'self'" data-dirs="default-src"></tr>
+        <tr data-source="https://*.example.com" data-dirs="?script-src"></tr>
+    </table>
+</div>
+</details>
+<details>
+<summary>Block all fonts and media on a site</summary>
+<p>
+Checking <code>'none'</code> in a column blocks that resource type completely:
+</p>
+<div>
+    <table class="sources">
+        <tr data-source="'none'" data-dirs="font-src media-src"></tr>
+        <tr data-source="'self'" data-dirs="default-src"></tr>
+    </table>
+</div>
+</details>
 </details>
 <details>
 <summary>Rules</summary>
@@ -76,12 +134,72 @@ The <a href="manage.html">Rules</a> page lists all active <i>dynamic</i> rules,
 A group is a reusable bundle of sources and directives (such as common CDNs or
 embed hosts). Configure groups in the <a href="groups.html">Groups</a> page,
 then select one in the <a href="report.html">Report</a> page and click
-<b>Apply</b> to enable its rules for the current host.
+<b>Apply</b> to update the current host's rules.
+</p>
+<p>
+Each checkbox cycles through three states: checked enables the directive,
+indeterminate (<b>&minus;</b>) unchecks it if set, and unchecked leaves it
+unchanged.
 </p>
 <p>
 Sources and directives checked in the <b>Ignore</b> group (or all directives if
-<i>default-src</i> is checked) are hidden from violation reports.
+<i>default-src</i> is checked, unless excluded with <b>&minus;</b>) are hidden
+from violation reports.
 </p>
+<h3>Examples</h3>
+<details>
+<summary>Allow embedded videos from a third-party domain</summary>
+<p>
+To allow sites to embed videos that also load images and scripts from a CDN,
+create a group (e.g. <i>Video</i>) and check the needed directives. Now you
+can easily allow videos from the Report page.
+</p>
+<div>
+    <table class="sources">
+        <tr data-source="https://*.youtube.com" data-dirs="script-src frame-src"></tr>
+        <tr data-source="https://*.ytimg.com" data-dirs="img-src"></tr>
+    </table>
+</div>
+</details>
+<details>
+<summary>Allow a CDN while disabling inline scripts</summary>
+<p>
+Check <i>script-src</i> (📜) for the CDN, and click <i>script-src</i> twice on
+<code>'unsafe-inline'</code> so it shows <b>&minus;</b> (unchecking it when
+applied):
+</p>
+<div>
+    <table class="sources">
+        <tr data-source="'unsafe-inline'" data-dirs="!script-src"></tr>
+        <tr data-source="https://cdn.example.com" data-dirs="script-src"></tr>
+    </table>
+</div>
+</details>
+<details>
+<summary>Ignore a tracker that appears often</summary>
+<p>
+In the <b>Ignore</b> group, add the tracker's origin and check
+<i>default-src</i> (📌) to suppress all violation reports from it:
+</p>
+<div>
+    <table class="sources">
+        <tr data-source="https://ads.example.com" data-dirs="default-src"></tr>
+    </table>
+</div>
+</details>
+<details>
+<summary>Ignore violations for example.com, unless it's a stylesheet</summary>
+<p>
+In the <b>Ignore</b> group, check <i>default-src</i> (📌) to ignore all
+directives by default, and click <i>style-src</i> (🦚) twice so it shows
+<b>&minus;</b>:
+</p>
+<div>
+    <table class="sources">
+        <tr data-source="https://*.example.com" data-dirs="default-src !style-src"></tr>
+    </table>
+</div>
+</details>
 </details>
 <details>
 <summary>Options</summary>

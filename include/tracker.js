@@ -80,6 +80,8 @@ export default class ViolationTracker {
         let options = await Options.get();
         let ignored = options?.groups?.Ignore?.[blocked];
         let dir = Policy.collapseDirective(report.directive);
+        if (ignored?.includes(`!${dir}`))
+            return true;
         if (ignored?.includes("default-src") || ignored?.includes(dir))
             return false;
 

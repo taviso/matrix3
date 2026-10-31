@@ -10,6 +10,21 @@ const options = await Options.get();
 options.groups ??= {};
 options.groups.Ignore ??= {};
 
+function updateBoxTooltip(box, groupName, source, directive) {
+    let base = sidepanel.getRuleTooltip(source, directive);
+    if (groupName === "Ignore") {
+        let state = box.checked ? "be IGNORED"
+                  : (box.indeterminate || directive === "default-src") ? "be REPORTED"
+                  : "follow default-src";
+        box.title = `${base}\n\nViolations for this directive will ${state}.`;
+    } else {
+        let state = box.checked ? "CHECKED"
+                  : box.indeterminate ? "UNCHECKED"
+                  : "UNCHANGED";
+        box.title = `${base}\n\nThis directive will be ${state}.`;
+    }
+}
+
 function addSourceRow(table, groupName, source, directives) {
     let cols = utils.getTableColProps(table, "id");
     let colNodes = table.querySelectorAll("colgroup col");
@@ -33,8 +48,9 @@ function addSourceRow(table, groupName, source, directives) {
         let box = document.createElement("input");
         box.type = "checkbox";
         box.checked = directives.includes(cols[i]);
+        box.indeterminate = directives.includes(`!${cols[i]}`);
         box.className = "rule";
-        box.title = sidepanel.getRuleTooltip(source, cols[i]);
+        updateBoxTooltip(box, groupName, source, cols[i]);
 
         if (colNodes[i].classList.contains("advanced"))
             cell.classList.add("advanced");
@@ -70,11 +86,32 @@ function updateGroupsDisplay() {
         utils.sortTable(table);
 
         table.addEventListener('change', async (event) => {
-            let row = event.target.closest('tr');
+            let box = event.target;
+            let row = box.closest('tr');
             if (!row)
                 return;
             let origin = row.dataset.origin;
-            options.groups[name][origin] = cols.slice(1).filter((_, i) => row.cells[i + 1].firstChild.checked);
+            let dir = cols[box.closest('td').cellIndex];
+            let prev = options.groups[name][origin];
+
+            // Cycle: unchecked -> checked -> indeterminate -> unchecked.
+            if (prev.includes(dir)) {
+                box.checked = false;
+                box.indeterminate = true;
+            } else if (prev.includes(`!${dir}`)) {
+                box.checked = false;
+            }
+
+            updateBoxTooltip(box, name, origin, dir);
+
+            options.groups[name][origin] = cols.slice(1).flatMap((col, i) => {
+                let input = row.cells[i + 1].firstChild;
+                if (input.checked)
+                    return [col];
+                if (input.indeterminate)
+                    return [`!${col}`];
+                return [];
+            });
             await Options.save();
         });
 
