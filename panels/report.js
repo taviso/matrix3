@@ -122,7 +122,7 @@ function applyServerSources() {
 
     for (let policy of currentServerPolicies) {
         for (let [directive, sources] of Object.entries(policy.directives)) {
-            let dir = collapseDirective(directive);
+            let dir = Policy.collapseDirective(directive);
 
             if (columns.includes(dir)) {
                 sources.forEach(src => setSourceCheckboxState(importableSource(src), dir, true));
@@ -358,7 +358,7 @@ async function fallbackToFirstParty(container = directivesTable.tBodies[0]) {
     columns = utils.getTableColProps(directivesTable, "id");
 
     for (let [directive, sources] of Object.entries(policy.directives)) {
-        let dir = collapseDirective(directive);
+        let dir = Policy.collapseDirective(directive);
         if (columns.includes(dir))
             sources.forEach(src => setSourceCheckboxState(importableSource(src), dir, true, undefined, container));
     }
@@ -371,11 +371,6 @@ function compareSourceRows(a, b) {
     let al = a.cells[0].textContent;
     let bl = b.cells[0].textContent;
     return (isHash(al) - isHash(bl)) || al.localeCompare(bl);
-}
-
-function collapseDirective(directive)
-{
-    return Policy.collapseDirective(directive);
 }
 
 async function getCurrentRules(hostName, container)
@@ -412,7 +407,7 @@ async function getCurrentRules(hostName, container)
         if (directive == "report-uri" || directive == "base-uri")
             continue;
 
-        let dir = collapseDirective(directive);
+        let dir = Policy.collapseDirective(directive);
         for (let src of sources)
             setSourceCheckboxState(src, dir, true, className, container);
     }
@@ -427,7 +422,7 @@ function isIgnored(source, directive)
 function setCurrentViolations(data, container)
 {
     for (let directive in data) {
-        let dir = collapseDirective(directive);
+        let dir = Policy.collapseDirective(directive);
         for (let src of data[directive]) {
             if (isIgnored(src, dir))
                 continue;

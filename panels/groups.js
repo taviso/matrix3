@@ -10,17 +10,12 @@ const options = await Options.get();
 options.groups ??= {};
 options.groups.Ignore ??= {};
 
-async function saveGroups() {
-    await Options.save();
-}
-
 function addSourceRow(table, groupName, source, directives) {
     let cols = utils.getTableColProps(table, "id");
     let colNodes = table.querySelectorAll("colgroup col");
     let row = document.createElement("tr");
     let title = document.createElement("th");
     let delBtn = document.createElement("button");
-    let span = document.createElement("span");
 
     row.dataset.origin = source;
 
@@ -29,11 +24,8 @@ function addSourceRow(table, groupName, source, directives) {
     delBtn.textContent = "×";
     delBtn.addEventListener("click", () => removeOrigin(groupName, source));
 
-    span.className = "origin-name";
-    span.textContent = source;
-
     title.title = source;
-    title.append(delBtn, span);
+    title.append(delBtn, source);
     row.appendChild(title);
 
     for (let i = 1; i < cols.length; i++) {
@@ -83,7 +75,7 @@ function updateGroupsDisplay() {
                 return;
             let origin = row.dataset.origin;
             options.groups[name][origin] = cols.slice(1).filter((_, i) => row.cells[i + 1].firstChild.checked);
-            await saveGroups();
+            await Options.save();
         });
 
         groupsContainer.appendChild(g);
@@ -100,7 +92,7 @@ async function addGroup() {
 
     options.groups[name] = {};
     newnameInput.value = '';
-    await saveGroups();
+    await Options.save();
     updateGroupsDisplay();
 }
 
@@ -108,7 +100,7 @@ async function deleteGroup(name) {
     if (!await utils.confirmAction(`Delete group ${name}?`))
         return;
     delete options.groups[name];
-    await saveGroups();
+    await Options.save();
     updateGroupsDisplay();
 }
 
@@ -126,13 +118,13 @@ async function addOrigin(group, input) {
         return;
 
     options.groups[group][origin] = [];
-    await saveGroups();
+    await Options.save();
     updateGroupsDisplay();
 }
 
 async function removeOrigin(group, origin) {
     delete options.groups[group][origin];
-    await saveGroups();
+    await Options.save();
     updateGroupsDisplay();
 }
 
