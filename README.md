@@ -40,7 +40,7 @@ When you're happy with the settings, click **Commit** to make them persistent.
 
 ### Suggested Policies
 
-If the server suggests it's own policy, you can either **Accept** or **Merge**
+If the server suggests its own policy, you can either **Accept** or **Merge**
 it with your own rules.
 
 This is entirely optional, you can also ignore what the server suggests.
