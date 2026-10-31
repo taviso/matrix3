@@ -13,109 +13,138 @@
 </p>
 <p>
 You can use this extension to control the permissions of websites.
-
-For example, enabling sandbox features, enabling or disabling scripts,
-stylesheets, fonts and choosing which third parties can provide subresources.
+For example, enabling sandbox features, disabling scripts, stylesheets, and
+fonts, and choosing which third parties can provide subresources.
 </p>
 <p>
-The first thing you probably want to do is fine-tune the default rules, you can do
-that by choosing
-the default ruleset in the <b>Options</b> page.
+The first thing you probably want to do is choose a default policy in the
+<a href="options.html">Options</a> page.
 </p>
-<h2>Report</h2>
-<p>
-The primary page for interacting with matrix³. This page allows you to
-precisely control the permissions of the active website.
+<details>
+<summary>Report</summary>
+<p id="report">
+This is the primary page for interacting with matrix³. It lets you control the
+permissions of the active website. If the page embeds frames from other
+<abbr title="The domain or hostname of a website (e.g. example.com)">origins</abbr>,
+each origin appears as a tab above the table.
 </p>
 <h3>Session and Dynamic Rules</h3>
 <p>
-When you toggle a checkbox in the <b>Report</b> page, matrix³ creates a
-<i>session</i> rule for that host. Session rules are ephemeral, they only
-last until you close the browser. Once you're happy with the result, click
-<b>Commit</b> to convert the session rule into a <i>dynamic</i> rule, which
-persists across browser restarts.
+Toggling a checkbox in the <a href="report.html">Report</a> page creates a
+temporary <i>session</i> rule that lasts until you close the browser. Committing it
+creates a <i>dynamic</i> rule that persists across browser restarts:
 </p>
-<p>
-If you change your mind about an edit, click <b>Abandon</b> to discard the
-session rule and restore the previously committed dynamic rule. To go the
-other way -- make a persistent rule temporary again -- click <b>Uncommit</b>,
-which demotes the dynamic rule back to a session rule (so it disappears when
-you close the browser). <b>Reset</b> removes every rule for the host --
-session and dynamic both.
-</p>
+<ul>
+    <li><b>Commit:</b> Save the session rule as a persistent dynamic rule.</li>
+    <li><b>Uncommit:</b> Demote a dynamic rule back to a temporary session rule.</li>
+    <li><b>Abandon:</b> Discard session changes and restore the saved dynamic rule.</li>
+    <li><b>Reset:</b> Remove all session and dynamic rules for the host.</li>
+    <li><b>Reload:</b> Reload the tab to apply rule changes.</li>
+</ul>
 <h3>Violations</h3>
 <p>
-When a page action is blocked by the active policy, matrix³ records the source
-and highlights the relevant checkbox.
+Blocked resources and actions are highlighted in orange. Enable the needed
+checkboxes, then click <b>Reload</b> to test. When you are happy with the settings,
+you can <b>Commit</b> them to make them permanent.
+</p>
+<h3>Sandbox Directives</h3>
+<p>
+Enabling the sandbox runs the document in an isolated origin and blocks
+scripts, forms, popups, downloads, and navigations unless selectively allowed.
+Cookies and storage require <b>Allow Same Origin</b>.
 </p>
 <h3>Server Suggested Policy</h3>
 <p>
-The Server Suggested Policy shows the policy the server sent for the current
-origin. <b>Accept</b> replaces your current selection with the server's policy;
-<b>Merge</b> instead adds the server's sources to your existing selection.
+Shows the policy sent by the server for the current origin. <b>Accept</b>
+replaces your selection with the server's policy; <b>Merge</b> adds the
+server's sources to your selection. Nonces and hashes are imported unchecked so
+<i>'unsafe-inline'</i> remains effective unless you enable them manually.
+</p>
+</details>
+<details>
+<summary>Rules</summary>
+<p id="rules">
+The <a href="manage.html">Rules</a> page lists all active <i>dynamic</i> rules,
+<i>session</i> rules, and <i>static</i> rulesets across all websites. Use
+<b>Filter</b> to search by host or directive, and select rules to
+<b>Remove</b>, <b>Commit</b>, or <b>Reset</b> them.
+</p>
+</details>
+<details>
+<summary>Groups</summary>
+<p id="groups">
+A group is a reusable bundle of sources and directives (such as common CDNs or
+embed hosts). Configure groups in the <a href="groups.html">Groups</a> page,
+then select one in the <a href="report.html">Report</a> page and click
+<b>Apply</b> to enable its rules for the current host.
 </p>
 <p>
-Please note, not all directives can be enabled. In particular, nonces and
-hashes are imported but not enabled to prevent <i>'unsafe-inline'</i> from being
-disabled. You can still manually enable them.
+Sources and directives checked in the <b>Ignore</b> group (or all directives if
+<i>default-src</i> is checked) are hidden from violation reports.
 </p>
-<h2>Groups</h2>
+</details>
+<details>
+<summary>Options</summary>
+<h3 id="options">Default Policy Strictness</h3>
 <p>
-A group is a named bundle of sources and directives you frequently want to
-apply together, for example a group containing the CDNs you allow on most
-sites. Define groups and check the desired directives for each source in the
-<b>Groups</b> page, then in the <b>Report</b> page pick the group and click
-<b>Apply</b> to add its sources and check those directives for the current
-host at once.
+Sets the baseline policy in the <a href="options.html">Options</a> page for
+sites without custom rules:
 </p>
-<p>
-The <b>Ignore</b> group is special: any source and directive you check in it
-(or all directives if <i>default-src</i> is checked) is hidden from violation
-reporting on the <b>Report</b> page. Use this for noisy trackers that you
-would never allow and don't want spamming the source list.
-</p>
-<h2>Export</h2>
-<p>
-Use the <b>Export</b> page to manage your collection of rules. <b>Download</b>
-saves your entire configuration (dynamic rules, groups, and options) to a
-local JSON file, which you can later <b>Import</b> to restore or move your
-settings to another browser.
-</p>
-<h3>Sync</h3>
-<p>
-If you are signed into Chrome, you can use <b>Push</b> and <b>Pull</b> to
-synchronize your <i>dynamic</i> rules across your devices. <b>Push</b> merges
-your local persistent rules into your cloud storage, <b>Pull</b> merges the
-cloud rules into your local configuration.
-</p>
-<p>
-Note that Cloud Sync only manages persistent dynamic rules. All session rules
-remain local to your current browser.
-</p>
-<h2>Options</h2>
+<ul>
+    <li><b>Permissive:</b> Nothing is blocked by default; restrict sites
+    individually in the <a href="report.html">Report</a> page.</li>
+    <li><b>First Party:</b> Allows first-party resources and third-party
+    images, styles, and fonts. Blocks third-party scripts.</li>
+    <li><b>Sandbox + Scripts:</b> Sandboxes every document in an isolated
+    origin, allowing only scripts and forms. Cookies require <b>Allow Same
+    Origin</b>.</li>
+    <li><b>Sandbox:</b> Sandboxes every document with no exceptions; only
+    static content works by default.</li>
+    <li><b>Strict:</b> Blocks everything (<i>default-src 'none'</i>) except
+    first-party styles and images.</li>
+</ul>
 <h3>Always Show Advanced Directives</h3>
 <p>
-Some Content Security Policy directives like <i>child-src</i>,
-<i>manifest-src</i>, and <i>object-src</i> are rarely
-needed. By default, matrix³ keeps their columns hidden in the
-<b>Report</b> page and only reveals a column when one of its cells has a
-violation or a checked source. Enable this option to keep all the advanced
-columns visible at all times.
+Rarely used directives (<i>child-src</i>, <i>manifest-src</i>,
+<i>object-src</i>) and advanced sandbox flags are hidden in the <b>Report</b>
+and <a href="groups.html">Groups</a> pages unless checked or triggered by a
+violation. Enable this to always show them.
 </p>
 <h3>Show Icon Badges</h3>
 <p>
-When enabled, matrix³ marks the toolbar icon with a red <b>!</b> badge
-whenever a CSP violation is reported for the active tab, so you know at a
-glance there is something to look at on the <b>Report</b> page. The badge
-clears on the next navigation.
+Displays a red <b>!</b> badge on the toolbar icon when the active tab reports a
+CSP violation.
+</p>
+<h3>Confirm Actions</h3>
+<p>
+Asks for confirmation before destructive actions such as resetting rules or
+deleting groups.
 </p>
 <h3>Unregister Service Workers on Reset</h3>
 <p>
-If a site registers a service worker while permissive rules are active, that
-worker might cache resources and serve them later, effectively bypassing newly
-restrictive rules. Enabling this option will automatically unregister service
-workers for the selected host on the active page when you click <b>Reset</b>,
-ensuring a clean slate for the next page load.
+Automatically unregisters service workers for the selected host when clicking
+<b>Reset</b>, preventing cached workers from bypassing stricter rules.
 </p>
+<h3>Default Scope</h3>
+<p>
+Groups rules and origin tabs either by registrable <b>Domain</b> (e.g.,
+<i>example.com</i>, including subdomains) or by exact <b>Host</b> (e.g.,
+<i>sub.example.com</i>).
+</p>
+</details>
+<details>
+<summary>Export</summary>
+<p id="export">
+In the <a href="export.html">Export</a> page, <b>Download</b> saves your
+dynamic rules, groups, and options to a JSON file, and <b>Import</b> restores
+them.
+</p>
+<h3>Sync</h3>
+<p>
+When signed into Chrome, <b>Push</b> and <b>Pull</b> merge your persistent
+<i>dynamic</i> rules with cloud storage across devices. Session rules remain
+local.
+</p>
+</details>
 </body>
 </html>

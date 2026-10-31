@@ -267,3 +267,17 @@ textarea#export {
     display: none;
 }
 
+/* Help panel */
+summary {
+    font-size: 1.5em;
+    font-weight: bold;
+    margin-block: 0.5em;
+    cursor: pointer;
+}
+
+details > [id] {
+    scroll-margin-top: 4em;
+}
+
+
+
