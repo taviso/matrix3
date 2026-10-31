@@ -88,9 +88,6 @@ document.body.addEventListener('click', async (e) => {
         case 'reload':
             await chrome.tabs.reload(undefined, { bypassCache: e.shiftKey });
             return;
-        case 'unblock':
-            unblockReportedViolations();
-            return;
         default:
             return;
     }
@@ -158,10 +155,6 @@ function applyServerSandbox() {
     }
 }
 
-function unblockReportedViolations() {
-    directivesTable.querySelectorAll("input.violation").forEach(b => b.checked = true);
-    setCurrentRules(originList.value);
-}
 // Apply the selected group's sources and checked directives to the table.
 function applyTrustGroup() {
     let name = document.getElementById('trustgroup').value;
@@ -631,11 +624,9 @@ function updateButtonStates() {
     let rules = RulesManager.getRules().filter(r => r.host === host);
     let hasSession = rules.some(r => r.isSession);
     let hasDynamic = rules.some(r => !r.isSession);
-    let hasViolations = directivesTable.querySelector("input.violation") !== null;
     document.getElementById('commit').disabled = !hasSession;
     document.getElementById('abandon').disabled = !hasSession;
     document.getElementById('uncommit').disabled = !hasDynamic || hasSession;
-    document.getElementById('unblock').disabled = !hasViolations;
     document.getElementById('reset').disabled = !hasSession && !hasDynamic;
 }
 
@@ -720,7 +711,6 @@ async function handleNotifyUpdate(msg) {
     if (violations) {
         setCurrentViolations(violations);
         utils.sortTable(directivesTable, compareSourceRows);
-        updateButtonStates();
     }
 
     populateServerPolicy();
