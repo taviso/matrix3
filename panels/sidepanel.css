@@ -4,6 +4,7 @@
 
 button {
     min-width: 6em;
+    white-space: nowrap;
 }
 
 caption {
