@@ -3,7 +3,7 @@
 }
 
 button {
-    min-width: 6em;
+    min-width: 5.8em;
 }
 
 caption {
@@ -33,7 +33,6 @@ textarea {
     width: 100%;
     font-family: monospace;
     line-height: 1.5;
-    min-height: -webkit-fill-available;
     max-height: calc(18 * 1.5em);
 }
 
@@ -57,14 +56,14 @@ table.sources th {
     white-space: nowrap;
 }
 
-/* Set the minimum width of the source column on the header cell */
+/* Give the source column all remaining width, with a 10ch floor when advanced columns are shown */
 table.sources thead th:first-child {
-    min-width: 12ch;
+    width: 100%;
+    min-width: 10ch;
 }
 
-/* Fill remaining table width and clip overflowing source names with ellipsis */
+/* Clip overflowing source names with ellipsis to whatever width the header column got */
 table.sources tbody th {
-    width: 100%;
     max-width: 0;
     font-family: monospace;
 }
@@ -168,7 +167,7 @@ label[for="servercsp"] {
 }
 
 select#trustgroup {
-    width: calc(100% - 6.5em);
+    width: calc(100% - 6.3em);
 }
 
 div#serverpolicy:has(button:disabled) {
@@ -252,6 +251,10 @@ section.group[data-name="Ignore"] h3::after {
 }
 
 /* Export panel */
+textarea#export {
+    min-height: -webkit-fill-available;
+}
+
 /* Hide the divider after the last-push line until it has content */
 #lastpush:empty + hr {
     display: none;
