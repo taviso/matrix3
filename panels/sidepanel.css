@@ -57,8 +57,15 @@ table.sources th {
     white-space: nowrap;
 }
 
+/* Set the minimum width of the source column on the header cell */
+table.sources thead th:first-child {
+    min-width: 12ch;
+}
+
+/* Fill remaining table width and clip overflowing source names with ellipsis */
 table.sources tbody th {
-    max-width: calc(18ch + max(100vw - 55ch, 0ch));
+    width: 100%;
+    max-width: 0;
     font-family: monospace;
 }
 
@@ -79,20 +86,24 @@ table.sources tr:hover {
     background-color: color-mix(in srgb, transparent, CanvasText 18%);
 }
 
-:is(col, tr).advanced {
-    visibility: collapse;
+/* Hide advanced columns and rows unless active or enabled in Options */
+:is(col, th, td, tr).advanced {
+    display: none;
 }
 
-table.sources:has(td.advanced input:is(:checked, .violation)) col.advanced {
-    visibility: visible;
+/* Reveal advanced directive columns when any advanced cell is checked or has a violation */
+table.sources:has(td.advanced input:is(:checked, .violation)) :is(col, th, td).advanced {
+    display: revert;
 }
 
+/* Reveal individual advanced sandbox rows when checked */
 tr.advanced:has(input:checked) {
-    visibility: visible;
+    display: revert;
 }
 
-body.show-advanced :is(col, tr).advanced {
-    visibility: visible;
+/* Force all advanced columns and rows visible when the option is enabled */
+body.show-advanced :is(col, th, td, tr).advanced {
+    display: revert;
 }
 
 /* Report panel */
@@ -219,7 +230,6 @@ section.group table.sources:not(:has(tbody tr)) {
 
 section.group table.sources tbody th {
     text-align: left;
-    max-width: calc(22ch + max(100vw - 59ch, 0ch));
 }
 
 button.delorigin,
