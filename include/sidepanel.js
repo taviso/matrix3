@@ -40,6 +40,11 @@ export function getRuleTooltip(source, directive)
     return title;
 }
 
+export function isValidSource(source)
+{
+    return helpData.sources.some(h => new RegExp(h.regex).test(source));
+}
+
 const sidepanelPages = {
     "Report": "/panels/report.html",
      "Rules": "/panels/manage.html",

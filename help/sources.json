@@ -31,6 +31,16 @@
       "description": "Allows the use of inline event handlers (like onclick) if their content matches a trusted hash."
     },
     {
+      "name": "'inline-speculation-rules'",
+      "regex": "^'inline-speculation-rules'$",
+      "description": "Allows the use of inline script elements for prefetching or prerendering."
+    },
+    {
+      "name": "about:",
+      "regex": "^about:$",
+      "description": "Allows loading resources from about: URLs (such as about:blank or about:srcdoc)."
+    },
+    {
       "name": "blob:",
       "regex": "^blob:$",
       "description": "Allows loading resources from blob: URLs (e.g., created with URL.createObjectURL)."
@@ -44,6 +54,11 @@
       "name": "filesystem:",
       "regex": "^filesystem:$",
       "description": "Allows loading resources from filesystem: URLs, created by the deprecated File System API."
+    },
+    {
+      "name": "mediastream:",
+      "regex": "^mediastream:$",
+      "description": "Allows loading media from mediastream: URLs."
     },
     {
       "name": "*",
@@ -61,6 +76,16 @@
       "description": "Allows loading resources from any HTTP origin."
     },
     {
+      "name": "wss:",
+      "regex": "^wss:$",
+      "description": "Allows connecting to any secure WebSocket (wss:) endpoint."
+    },
+    {
+      "name": "ws:",
+      "regex": "^ws:$",
+      "description": "Allows connecting to any WebSocket (ws:) endpoint."
+    },
+    {
       "name": "nonce-",
       "regex": "^'nonce-[A-Za-z0-9+/_-]+={0,2}'$",
       "description": "Allows a specific inline script or style marked with a cryptographic 'nonce' (number used once)."
@@ -72,7 +97,7 @@
     },
     {
       "name": "URL",
-      "regex": "^(?:https?:)?//",
+      "regex": "^(?:https?|wss?)://(\\*\\.)?[\\w-]+(\\.[\\w-]+)*(:(?:\\d+|\\*))?$",
       "description": "Allows loading resources from this specific domain or host."
     },
     {

@@ -19,12 +19,13 @@ table, th, td {
     border-collapse: collapse
 }
 
-td:has(input.violation) {
-    background-color: orange;
-}
-
 table {
     width: 100%;
+}
+
+/* Center the checkboxes */
+table td:has(input[type="checkbox"]) {
+    text-align: center;
 }
 
 textarea {
@@ -36,32 +37,16 @@ textarea {
     max-height: calc(18 * 1.5em);
 }
 
-td:has(input.sandbox:not(:checked)):after {
-    content: "🔒"
-}
-td:has(input.sandbox:checked):after {
-    content: "🔓"
-}
-td:has(input#sandbox-enabled:not(:checked)):after {
-    content: "🔓"
-}
-td:has(input#sandbox-enabled:checked):after {
-    content: "🔒"
+#panel {
+    position: sticky;
+    top: 1em;
 }
 
-table#sandbox th {
-    text-align: left
+body.standalone #panel {
+    display: none;
 }
 
-table#sandbox tbody th {
-    padding-left: 1.5em;
-    font-weight: normal;
-    max-width: 24ch;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
+/* Source directive tables (Report and Groups panels) */
 div:has(> table.sources) {
     overflow-x: auto;
 }
@@ -94,14 +79,6 @@ table.sources tr:hover {
     background-color: color-mix(in srgb, transparent, CanvasText 18%);
 }
 
-table#sandbox tbody th:before {
-    content: " Allow ";
-}
-
-table#sandbox:not(:has(input#sandbox-enabled:checked)) tbody {
-    display: none;
-}
-
 :is(col, tr).advanced {
     visibility: collapse;
 }
@@ -118,12 +95,42 @@ body.show-advanced :is(col, tr).advanced {
     visibility: visible;
 }
 
-#panel {
-    position: sticky;
-    top: 1em;
+/* Report panel */
+td:has(input.violation) {
+    background-color: orange;
 }
 
-body.standalone #panel {
+td:has(input.sandbox:not(:checked)):after {
+    content: "🔒"
+}
+td:has(input.sandbox:checked):after {
+    content: "🔓"
+}
+td:has(input#sandbox-enabled:not(:checked)):after {
+    content: "🔓"
+}
+td:has(input#sandbox-enabled:checked):after {
+    content: "🔒"
+}
+
+table#sandbox th {
+    text-align: left
+}
+
+table#sandbox tbody th {
+    padding-left: 1.5em;
+    font-weight: normal;
+    max-width: 24ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+table#sandbox tbody th:before {
+    content: " Allow ";
+}
+
+table#sandbox:not(:has(input#sandbox-enabled:checked)) tbody {
     display: none;
 }
 
@@ -137,53 +144,7 @@ div#trustcontrol:not(:has(option)) {
     display: none;
 }
 
-/* Center the checkboxes */
-table td:has(input[type="checkbox"]) {
-    text-align: center;
-}
-
 div#serverpolicy:has(button:disabled) {
-    display: none;
-}
-
-/* The rules tables */
-table#session tr,
-table#dynamic tr {
-    font-family: monospace;
-}
-
-/* The rule policy text */
-table#session tr td:last-of-type,
-table#dynamic tr td:last-of-type {
-    font-size: smaller;
-}
-
-input#filter {
-    width: 100%;
-}
-
-/* The remove button on the groups panel */
-table.sources tbody th:has(button.delorigin) {
-    text-align: left;
-}
-button.delorigin {
-    min-width: 1em;
-}
-span.origin-name {
-    padding-left: 0.5em;
-}
-section.group[data-name="Ignore"] button.delgroup {
-    display: none;
-}
-section.group[data-name="Ignore"] h3.group-name::after {
-    content: "Sources and directives checked here are hidden from violation reports.";
-    display: block;
-    font-weight: normal;
-    font-size: smaller;
-}
-
-/* Hide the divider after the last-push line until it has content */
-#lastpush:empty + hr {
     display: none;
 }
 
@@ -207,5 +168,57 @@ div#frames button.active {
 div#frames button:not(.active):hover {
     background: color-mix(in srgb, transparent, CanvasText 8%);
     cursor: pointer;
+}
+
+/* Rules panel */
+table#session tr,
+table#dynamic tr {
+    font-family: monospace;
+}
+
+/* The rule policy text */
+table#session tr td:last-of-type,
+table#dynamic tr td:last-of-type {
+    font-size: smaller;
+}
+
+input#filter {
+    width: 100%;
+}
+
+/* Groups panel */
+/* Hide the title row if there are no entries */
+section.group table.sources:not(:has(tbody tr)) {
+    display: none;
+}
+
+section.group table.sources tbody th {
+    text-align: left;
+    max-width: calc(22ch + max(100vw - 59ch, 0ch));
+}
+
+button.delorigin,
+button.delgroup {
+    min-width: 1em;
+    padding: 0 0.2em;
+    margin-right: 0.5em;
+}
+
+/* Users shouldn't delete the Ignore group */
+section.group[data-name="Ignore"] button.delgroup {
+    display: none;
+}
+
+section.group[data-name="Ignore"] h3::after {
+    content: "Sources and directives checked here are hidden from violation reports.";
+    display: block;
+    font-weight: normal;
+    font-size: smaller;
+}
+
+/* Export panel */
+/* Hide the divider after the last-push line until it has content */
+#lastpush:empty + hr {
+    display: none;
 }
 

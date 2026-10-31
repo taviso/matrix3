@@ -88,6 +88,7 @@ export default class CspReport {
             case "data:":
             case "blob:":
             case "filesystem:":
+            case "mediastream:":
             case "trusted-types-sink:":
                 return protocol;
         }

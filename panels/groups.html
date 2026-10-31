@@ -20,7 +20,7 @@
 
 <template id="group-template">
     <section class="group">
-        <h3 class="group-name"></h3>
+        <h3><button class="delgroup" title="Delete Group">&times;</button><span class="group-name"></span></h3>
         <div>
             <table class="sources">
                 <colgroup>
@@ -60,9 +60,8 @@
             </table>
         </div>
         <p>
-            <input type=text class="neworigin" placeholder="Source" title="Example: https://*.example.com or https://example.com">
+            <input type=text class="neworigin" placeholder="Source" title="Enter https://*.example.com, https://www.example.com, or a keyword like 'self'">
             <button class="addorigin">Add Source</button>
-            <button class="delgroup">Delete Group</button>
         </p>
     </section>
 </template>

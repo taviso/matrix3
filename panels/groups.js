@@ -65,6 +65,10 @@ function updateGroupsDisplay() {
         g.querySelector('.group-name').textContent = name;
         g.querySelector('.delgroup').addEventListener('click', () => deleteGroup(name));
         g.querySelector('.addorigin').addEventListener('click', () => addOrigin(name, input.value));
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter')
+                addOrigin(name, input.value);
+        });
 
         for (let [origin, dirs] of Object.entries(origins)) {
             addSourceRow(table, name, origin, dirs);
@@ -112,6 +116,8 @@ async function addOrigin(group, origin) {
 
     if (!origin)
         return;
+    if (!sidepanel.isValidSource(origin))
+        return;
     if (origin in options.groups[group])
         return;
 
@@ -127,5 +133,9 @@ async function removeOrigin(group, origin) {
 }
 
 document.getElementById('addgroup').addEventListener('click', () => addGroup());
+newnameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter')
+        addGroup();
+});
 
 updateGroupsDisplay();
