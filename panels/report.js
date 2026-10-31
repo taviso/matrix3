@@ -657,6 +657,7 @@ async function refreshTable(domain) {
 
 function populateTrustGroups() {
     let select = document.getElementById('trustgroup');
+    let prev = select.value;
     let names = Object.keys(options.groups ?? {}).filter(name => name !== 'Ignore');
 
     select.replaceChildren(...names.map(name => {
@@ -665,6 +666,9 @@ function populateTrustGroups() {
         opt.value = name;
         return opt;
     }));
+
+    if (names.includes(prev))
+        select.value = prev;
 }
 
 async function updateReport() {
@@ -714,7 +718,6 @@ async function handleNotifyUpdate(msg) {
     }
 
     populateServerPolicy();
-    populateTrustGroups();
 }
 
 chrome.runtime.onMessage.addListener((msg) => {
@@ -729,6 +732,5 @@ chrome.runtime.onMessage.addListener((msg) => {
     }
 });
 
-Options.addUpdateListener(() => populateTrustGroups());
-populateTrustGroups();
+Options.addUpdateListener(() => updateReport());
 updateReport();
