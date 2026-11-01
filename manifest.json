@@ -54,7 +54,6 @@
     "webNavigation",
     "webRequest",
     "declarativeNetRequest",
-    "tabs",
     "sidePanel",
     "storage",
     "browsingData"
