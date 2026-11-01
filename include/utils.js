@@ -57,3 +57,19 @@ export function checkboxMutex(group, target) {
 
     boxes.filter(box => box !== target).forEach(box => box.checked = false);
 }
+
+// Wrap a leading "http(s)://" in a span so CSS can hide it visually while
+// keeping the full source string in .textContent.
+export function formatSource(source) {
+    let frag = document.createDocumentFragment();
+    let match = source.match(/^https?:\/\//);
+    if (match) {
+        let span = document.createElement("span");
+        span.className = "scheme";
+        span.textContent = match[0];
+        frag.append(span, source.slice(match[0].length));
+    } else {
+        frag.append(source);
+    }
+    return frag;
+}

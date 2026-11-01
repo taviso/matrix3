@@ -13,7 +13,7 @@ for (let placeholder of document.querySelectorAll('table.sources')) {
         let row = table.tBodies[0].insertRow();
         let th = document.createElement('th');
 
-        th.textContent = source;
+        th.append(utils.formatSource(source));
         th.title = source;
         row.appendChild(th);
 

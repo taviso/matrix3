@@ -63,6 +63,7 @@ body.standalone #panel {
 /* Source directive tables (Report and Groups panels) */
 div:has(> table.sources) {
     overflow-x: auto;
+    container-type: inline-size;
 }
 
 table.sources th {
@@ -81,6 +82,13 @@ table.sources thead th:first-child {
 table.sources tbody th {
     max-width: 0;
     font-family: monospace;
+}
+
+/* Hide the scheme prefix in narrow panels while keeping it copyable */
+@container (width < 64ch) {
+    table.sources span.scheme {
+        font-size: 0;
+    }
 }
 
 /* hilight active column */

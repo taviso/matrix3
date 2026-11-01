@@ -40,7 +40,7 @@ function addSourceRow(table, groupName, source, directives) {
     delBtn.addEventListener("click", () => removeOrigin(groupName, source));
 
     title.title = source;
-    title.append(delBtn, source);
+    title.append(delBtn, utils.formatSource(source));
     row.appendChild(title);
 
     for (let i = 1; i < cols.length; i++) {

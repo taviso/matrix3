@@ -269,7 +269,7 @@ function addSourceCheckboxRow(source, container = directivesTable.tBodies[0])
     row = document.createElement("tr");
     title = document.createElement("th");
 
-    title.textContent = source;
+    title.append(utils.formatSource(source));
     title.title = source;
     row.appendChild(title);
 
