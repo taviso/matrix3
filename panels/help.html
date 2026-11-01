@@ -46,7 +46,7 @@
 <p>
 You can use this extension to control the permissions of websites.
 For example, enabling sandbox features, disabling scripts, stylesheets, and
-fonts, and choosing which third parties can provide subresources.
+fonts, or choosing which third parties can provide subresources.
 </p>
 <p>
 The first thing you probably want to do is choose a default policy in the
@@ -63,13 +63,17 @@ each origin appears as a tab above the table.
 <h3>Session and Dynamic Rules</h3>
 <p>
 Toggling a checkbox in the <a href="report.html">Report</a> page creates a
-temporary <i>session</i> rule that lasts until you close the browser. Committing it
-creates a <i>dynamic</i> rule that persists across browser restarts:
+temporary <i>session</i> rule that lasts until you close the browser. Remember
+to reload the page after making any changes.
+</p>
+<p>
+If you want to keep the rule, you can <b>Commit</b> it, creating a
+<i>dynamic</i> rule that persists across browser restarts.
 </p>
 <ul>
-    <li><b>Commit:</b> Save the session rule as a persistent dynamic rule.</li>
+    <li><b>Commit:</b> Save the temporary session rule as a persistent dynamic rule.</li>
     <li><b>Uncommit:</b> Demote a dynamic rule back to a temporary session rule.</li>
-    <li><b>Abandon:</b> Discard session changes and restore the saved dynamic rule.</li>
+    <li><b>Abandon:</b> Discard any session changes and restore the saved dynamic rule.</li>
     <li><b>Reset:</b> Remove all session and dynamic rules for the host.</li>
     <li><b>Reload:</b> Reload the tab to apply rule changes.</li>
 </ul>
@@ -82,15 +86,19 @@ you can <b>Commit</b> them to make them permanent.
 <h3>Sandbox Directives</h3>
 <p>
 Enabling the sandbox runs the document in an isolated origin and blocks
-scripts, forms, popups, downloads, and navigations unless selectively allowed.
-Cookies and storage require <b>Allow Same Origin</b>.
+scripts, forms, popups, downloads, and navigations. You can make exceptions,
+these options will only be visible if the sandbox is enabled.
+</p>
+Please note that cookies will not work when sandboxed without <b>Allow Same Origin</b>.
 </p>
 <h3>Server Suggested Policy</h3>
 <p>
-Shows the policy sent by the server for the current origin. <b>Accept</b>
-replaces your selection with the server's policy; <b>Merge</b> adds the
-server's sources to your selection. Nonces and hashes are imported unchecked so
-<i>'unsafe-inline'</i> remains effective unless you enable them manually.
+Shows the policy recommended by the server for the current origin.
+<b>Accept</b> replaces your selection with the server's policy; <b>Merge</b>
+adds the server's sources to your existing selection. This is entirely optional.
+</p>
+<p>
+Note that nonces and hashes are imported unchecked so that <i>'unsafe-inline'</i> remains effective.
 </p>
 <h3>Examples</h3>
 <details>
@@ -114,7 +122,6 @@ Checking <code>'none'</code> in a column blocks that resource type completely:
 <div>
     <table class="sources">
         <tr data-source="'none'" data-dirs="font-src media-src"></tr>
-        <tr data-source="'self'" data-dirs="default-src"></tr>
     </table>
 </div>
 </details>
@@ -125,11 +132,12 @@ Checking <code>'none'</code> in a column blocks that resource type completely:
 The <a href="manage.html">Rules</a> page lists all active <i>dynamic</i> rules,
 <i>session</i> rules, and <i>static</i> rulesets across all websites. Use
 <b>Filter</b> to search by host or directive. You can select multiple rules and
-<b>Remove</b> or <b>Commit</b> them.
+<b>Remove</b> or <b>Commit</b> them in one operation.
 </p>
 <p>
 The <b>Reset</b> button will remove all saved rules after confirmation,
-allowing you to start fresh.
+allowing you to start fresh. You should backup your settings from the <a
+href="export.html">Export</a> page first, just in case.
 </p>
 </details>
 <details>
@@ -152,7 +160,7 @@ rules.
 </p>
 <p>
 Each checkbox cycles through three states. A check enables the directive,
-a <b>minus</b> unchecks it, and unchecked leaves it unchanged.
+a <b>minus</b> clears it, and unchecked leaves it unchanged.
 </p>
 <h3>Ignore</h3>
 <p>
@@ -162,9 +170,9 @@ don't want it cluttering up the report, you can add it here.
 </p>
 <h4>Exclusions</h4>
 <p>
-If <i>default-src</i> is checked, all violations for this origin will be
-ignored. If you want everything to be ignored <b>except</b> for certain types,
-you can check <i>default-src</i> and set the exclusions to <b>minus</b>.
+If <i>default-src</i> is checked in the Ignore group, all violations for this
+origin will be ignored. If you want everything to be ignored <b>except</b> for
+certain types, you can check <i>default-src</i> and set the exclusions to <b>minus</b>.
 </p>
 <h3>Examples</h3>
 <details>
@@ -209,7 +217,7 @@ In the <b>Ignore</b> group, add the tracker's origin and check
 </div>
 </details>
 <details>
-<summary>Ignore violations for example.com, unless it's a stylesheet</summary>
+<summary>Ignore violations for a site, unless it's a stylesheet</summary>
 <p>
 In the <b>Ignore</b> group, check <i>default-src</i> (📌) to ignore all
 directives by default, and click <i>style-src</i> (🦚) twice so it shows a
@@ -237,17 +245,16 @@ sites without custom rules:
     <li><b>Sandbox + Scripts:</b> Sandboxes every document in an isolated
     origin, allowing only scripts and forms. Cookies require <b>Allow Same
     Origin</b>.</li>
-    <li><b>Sandbox:</b> Sandboxes every document with no exceptions; only
-    static content works by default.</li>
-    <li><b>Strict:</b> Blocks everything (<i>default-src 'none'</i>) except
-    first-party styles and images.</li>
+    <li><b>Sandbox:</b> Sandbox every document with no exceptions; only static
+    content works by default.</li>
+    <li><b>Strict:</b> Blocks everything except first-party styles and
+    images.</li>
 </ul>
 <h3>Always Show Advanced Directives</h3>
 <p>
-Rarely used directives (<i>child-src</i>, <i>manifest-src</i>,
-<i>object-src</i>) and advanced sandbox flags are hidden in the <b>Report</b>
-and <a href="groups.html">Groups</a> pages unless checked or triggered by a
-violation. Enable this to always show them.
+Rarely used directives and advanced sandbox flags are hidden unless checked or
+triggered by a violation. This is to reduce unnescessary clutter in reports.
+Enable this to always show them.
 </p>
 <h3>Show Icon Badges</h3>
 <p>
@@ -261,28 +268,36 @@ deleting groups.
 </p>
 <h3>Unregister Service Workers on Reset</h3>
 <p>
-Automatically unregisters service workers for the selected host when clicking
-<b>Reset</b>, preventing cached workers from bypassing stricter rules.
+Service workers can complicate policy enforcement, so it's a good idea to
+unregister them if you're tightening a policy. This option unregisters service
+workers for the selected host when clicking <b>Reset</b>, preventing cached
+workers from causing confusing results.
 </p>
 <h3>Default Scope</h3>
 <p>
-Groups rules and origin tabs either by registrable <b>Domain</b> (e.g.,
-<i>example.com</i>, including subdomains) or by exact <b>Host</b> (e.g.,
-<i>sub.example.com</i>).
+You can choose whether to group rules by registrable <b>Domain</b> (e.g.,
+<i>*.example.com</i>) or by exact <b>Host</b> (e.g., <i>sub.example.com</i>).
+</p>
+<p>
+It's much easier to manage rules by domain, but some users might prefer
+control over individual hosts within a domain. If you're not sure, stick with
+<b>Domain</b>.
 </p>
 </details>
 <details>
 <summary>Export</summary>
 <p id="export">
-In the <a href="export.html">Export</a> page, <b>Download</b> saves your
-dynamic rules, groups, and options to a JSON file, and <b>Import</b> restores
-them.
+In the <a href="export.html">Export</a> page, <b>Download</b> allows you to
+backup your rules and settings to a JSON file.
 </p>
 <h3>Sync</h3>
 <p>
-When signed into Chrome, <b>Push</b> and <b>Pull</b> merge your persistent
-<i>dynamic</i> rules with cloud storage across devices. Session rules remain
-local.
+When signed into Chrome, <b>Push</b> and <b>Pull</b> manage saving your
+rules across devices. Click <b>Push</b> to save your rules to cloud storage,
+and <b>Pull</b> to fetch any new rules saved from another device.
+</p>
+<p>
+Note that session (temporary) rules <i>always</i> remain local.
 </p>
 </details>
 </body>
