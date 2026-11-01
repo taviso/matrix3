@@ -8,26 +8,10 @@ import { MessageTypes } from '/include/commands.js'
 let RulesManager = sidepanel.RulesManager;
 let options = await Options.get();
 
-// Load any helpful hints and tooltips we have.
-let helpData = { sources: [], directives: {}, sandbox: {} };
-
-try {
-    const [srcs, dirs, sbx] = await Promise.all([
-        fetch(chrome.runtime.getURL('help/sources.json')).then(r => r.json()),
-        fetch(chrome.runtime.getURL('help/directives.json')).then(r => r.json()),
-        fetch(chrome.runtime.getURL('help/sandbox.json')).then(r => r.json())
-    ]);
-    helpData.sources = srcs.sources;
-    helpData.directives = dirs.directives;
-    helpData.sandbox = sbx.sandbox;
-
-    // Attach tooltips to the static sandbox checkboxes.
-    document.querySelectorAll("td input.sandbox").forEach(box => {
-        box.title = helpData.sandbox[box.id] ?? "";
-    });
-} catch (e) {
-    console.warn("report", "failed to load help data", e);
-}
+// Attach tooltips to the static sandbox checkboxes.
+document.querySelectorAll("td input.sandbox").forEach(box => {
+    box.title = sidepanel.helpData.sandbox[box.id] ?? "";
+});
 
 const directivesTable = document.querySelector("table#sources")
 const sandboxTable = document.querySelector("table#sandbox")
@@ -63,7 +47,7 @@ const kNonceOrHashFull = new RegExp(kNonceOrHashPrefix.source + /[A-Za-z0-9+/_-]
 // Find all origins currently loaded in the tab that fall under the given scope.
 async function getOriginsInScope(scope) {
     let tab = await sidepanel.getActiveTab();
-    let frames = await chrome.webNavigation.getAllFrames({tabId: tab.id}) ?? [];
+    let frames = await chrome.webNavigation.getAllFrames({tabId: tab.id}).catch(() => []) ?? [];
     let origins = new Set([`https://${scope}`]);
 
     for (let f of frames) {
@@ -104,9 +88,6 @@ document.body.addEventListener('click', async (e) => {
         case 'reload':
             await chrome.tabs.reload(undefined, { bypassCache: e.shiftKey });
             return;
-        case 'unblock':
-            unblockReportedViolations();
-            return;
         default:
             return;
     }
@@ -141,7 +122,7 @@ function applyServerSources() {
 
     for (let policy of currentServerPolicies) {
         for (let [directive, sources] of Object.entries(policy.directives)) {
-            let dir = collapseDirective(directive);
+            let dir = Policy.collapseDirective(directive);
 
             if (columns.includes(dir)) {
                 sources.forEach(src => setSourceCheckboxState(importableSource(src), dir, true));
@@ -174,43 +155,34 @@ function applyServerSandbox() {
     }
 }
 
-function unblockReportedViolations() {
-    directivesTable.querySelectorAll("input.violation").forEach(b => b.checked = true);
-    setCurrentRules(originList.value);
-}
-// Apply (or remove) the selected group's origins to default-src, script-src,
-// style-src, and img-src. default-src covers other directives via inheritance;
-// the rest are commonly set explicitly in strict policies so they need their
-// own entries.
-async function applyTrustGroup(checked) {
+// Apply the selected group's sources and checked directives to the table.
+function applyTrustGroup() {
     let name = document.getElementById('trustgroup').value;
-    let dirs = ["default-src", "script-src", "style-src", "img-src"];
-    let origins;
+    let group;
 
     if (!name)
         return;
 
-    origins = options.groups?.[name] ?? [];
+    group = options.groups?.[name] ?? {};
 
-    for (let origin of origins) {
-        for (let dir of dirs) {
-            let box = findCheckbox(origin, dir, checked);
+    for (let [origin, dirs] of Object.entries(group)) {
+        addSourceCheckboxRow(origin);
+        for (let entry of dirs) {
+            let enable = !entry.startsWith('!');
+            let dir = enable ? entry : entry.slice(1);
+            let box = findCheckbox(origin, dir, true);
             if (!box)
                 continue;
-            box.checked = checked;
+            box.checked = enable;
             enforceNoneLeader(box);
         }
     }
-
-    if (!checked)
-        await fallbackToFirstParty();
 
     utils.sortTable(directivesTable, compareSourceRows);
     setCurrentRules(originList.value);
 }
 
-document.getElementById('trust').addEventListener("click", () => applyTrustGroup(true));
-document.getElementById('untrust').addEventListener("click", () => applyTrustGroup(false));
+document.getElementById('applygroup').addEventListener("click", () => applyTrustGroup());
 
 originList.addEventListener("click", (e) => {
     let btn = e.target.closest("button");
@@ -218,7 +190,6 @@ originList.addEventListener("click", (e) => {
     originList.value = btn.dataset.value;
     userOrigin = originList.value;
     refreshTable(originList.value);
-    populateServerPolicy();
     updateOriginScopeState();
 });
 
@@ -289,19 +260,16 @@ function addSourceCheckboxRow(source, container = directivesTable.tBodies[0])
     let existing = Array.from(container.children).find(r => r.cells[0]?.textContent === source);
     let cols = utils.getTableColProps(directivesTable, "id");
     let colNodes = directivesTable.querySelectorAll("colgroup col");
-    let ignored = options.groups?.Ignore ?? [];
     let row;
     let title;
 
     if (existing)
         return existing;
-    if (ignored.includes(source))
-        return null;
 
     row = document.createElement("tr");
     title = document.createElement("th");
 
-    title.textContent = source;
+    title.append(utils.formatSource(source));
     title.title = source;
     row.appendChild(title);
 
@@ -311,17 +279,7 @@ function addSourceCheckboxRow(source, container = directivesTable.tBodies[0])
         box.type = "checkbox";
         box.checked = false;
         box.className = "rule";
-
-        // Add any hint data we have for this combination.
-        let sourceHelp = helpData.sources.find(h => new RegExp(h.regex).test(source));
-        let directiveHelp = helpData.directives[cols[i]];
-
-        if (directiveHelp)
-            box.title += `${cols[i]}: ${directiveHelp}`;
-        if (directiveHelp && sourceHelp)
-            box.title += `\n\n`;
-        if (sourceHelp && directiveHelp)
-            box.title += sourceHelp.description;
+        box.title = sidepanel.getRuleTooltip(source, cols[i]);
 
         if (colNodes[i].classList.contains("advanced"))
             cell.classList.add("advanced");
@@ -401,7 +359,7 @@ async function fallbackToFirstParty(container = directivesTable.tBodies[0]) {
     columns = utils.getTableColProps(directivesTable, "id");
 
     for (let [directive, sources] of Object.entries(policy.directives)) {
-        let dir = collapseDirective(directive);
+        let dir = Policy.collapseDirective(directive);
         if (columns.includes(dir))
             sources.forEach(src => setSourceCheckboxState(importableSource(src), dir, true, undefined, container));
     }
@@ -414,19 +372,6 @@ function compareSourceRows(a, b) {
     let al = a.cells[0].textContent;
     let bl = b.cells[0].textContent;
     return (isHash(al) - isHash(bl)) || al.localeCompare(bl);
-}
-
-function collapseDirective(directive)
-{
-    switch (directive) {
-        case "script-src-elem":
-        case "script-src-attr":
-            return "script-src";
-        case "style-src-elem":
-        case "style-src-attr":
-            return "style-src";
-    }
-    return directive;
 }
 
 async function getCurrentRules(hostName, container)
@@ -463,18 +408,29 @@ async function getCurrentRules(hostName, container)
         if (directive == "report-uri" || directive == "base-uri")
             continue;
 
-        let dir = collapseDirective(directive);
+        let dir = Policy.collapseDirective(directive);
         for (let src of sources)
             setSourceCheckboxState(src, dir, true, className, container);
     }
 }
 
+function isIgnored(source, directive)
+{
+    let dirs = options.groups?.Ignore?.[source];
+    if (dirs?.includes(`!${directive}`))
+        return false;
+    return dirs?.includes("default-src") || dirs?.includes(directive);
+}
+
 function setCurrentViolations(data, container)
 {
     for (let directive in data) {
-        let dir = collapseDirective(directive);
-        for (let src of data[directive])
+        let dir = Policy.collapseDirective(directive);
+        for (let src of data[directive]) {
+            if (isIgnored(src, dir))
+                continue;
             setSourceCheckboxClass(src, dir, "violation", container);
+        }
     }
 }
 
@@ -556,7 +512,7 @@ async function setCurrentRules(hostName)
 
 async function populateOriginList(preferredDomain) {
     let tab = await sidepanel.getActiveTab();
-    let frames = (await chrome.webNavigation.getAllFrames({tabId: tab.id}) ?? [])
+    let frames = (await chrome.webNavigation.getAllFrames({tabId: tab.id}).catch(() => []) ?? [])
                      .filter(f => f.documentLifecycle === "active");
 
     let domains = new Map();
@@ -592,7 +548,7 @@ async function populateOriginList(preferredDomain) {
     originList.value = target;
 }
 
-async function populateServerPolicy() {
+async function populateServerPolicy(container) {
     let tab = await sidepanel.getActiveTab();
     let headers;
     let sources = new Set();
@@ -620,9 +576,7 @@ async function populateServerPolicy() {
         .filter(src => kNonceOrHashFull.test(src))
         .forEach(src => sources.add(src));
 
-    sources.forEach(src => addSourceCheckboxRow(src));
-
-    utils.sortTable(directivesTable, compareSourceRows);
+    sources.forEach(src => addSourceCheckboxRow(src, container));
 }
 
 async function refreshViolations(domain) {
@@ -666,11 +620,9 @@ function updateButtonStates() {
     let rules = RulesManager.getRules().filter(r => r.host === host);
     let hasSession = rules.some(r => r.isSession);
     let hasDynamic = rules.some(r => !r.isSession);
-    let hasViolations = directivesTable.querySelector("input.violation") !== null;
     document.getElementById('commit').disabled = !hasSession;
     document.getElementById('abandon').disabled = !hasSession;
     document.getElementById('uncommit').disabled = !hasDynamic || hasSession;
-    document.getElementById('unblock').disabled = !hasViolations;
     document.getElementById('reset').disabled = !hasSession && !hasDynamic;
 }
 
@@ -680,12 +632,8 @@ async function refreshTable(domain) {
     resetSandboxDirectives();
 
     await getCurrentRules(domain, fragment);
-
-    let violations = await refreshViolations(domain);
-
-    if (violations) {
-        setCurrentViolations(violations, fragment);
-    }
+    await populateServerPolicy(fragment);
+    setCurrentViolations(await refreshViolations(domain), fragment);
 
     // Sort the fragment children before appending
     let rows = Array.from(fragment.children);
@@ -701,6 +649,7 @@ async function refreshTable(domain) {
 
 function populateTrustGroups() {
     let select = document.getElementById('trustgroup');
+    let prev = select.value;
     let names = Object.keys(options.groups ?? {}).filter(name => name !== 'Ignore');
 
     select.replaceChildren(...names.map(name => {
@@ -709,18 +658,20 @@ function populateTrustGroups() {
         opt.value = name;
         return opt;
     }));
+
+    if (names.includes(prev))
+        select.value = prev;
 }
 
 async function updateReport() {
     let tab = await sidepanel.getActiveTab();
     await populateOriginList(userOrigin);
     await refreshTable(originList.value);
-    populateServerPolicy();
     populateTrustGroups();
     updateOriginScopeState();
 
     // If the user has opened the report, clear any icon badge.
-    if (tab) chrome.action.setBadgeText({ text: '', tabId: tab.id });
+    if (tab) chrome.action.setBadgeText({ text: '', tabId: tab.id }).catch(() => {});
 }
 
 chrome.webNavigation.onCommitted.addListener(async (details) => {
@@ -750,16 +701,9 @@ async function handleNotifyUpdate(msg) {
     if (msg.data?.id !== tab?.id)
         return;
 
-    let violations = await refreshViolations(originList.value);
-
-    if (violations) {
-        setCurrentViolations(violations);
-        utils.sortTable(directivesTable, compareSourceRows);
-        updateButtonStates();
-    }
-
-    populateServerPolicy();
-    populateTrustGroups();
+    setCurrentViolations(await refreshViolations(originList.value));
+    await populateServerPolicy();
+    utils.sortTable(directivesTable, compareSourceRows);
 }
 
 chrome.runtime.onMessage.addListener((msg) => {
@@ -774,6 +718,5 @@ chrome.runtime.onMessage.addListener((msg) => {
     }
 });
 
-Options.addUpdateListener(() => populateTrustGroups());
-populateTrustGroups();
+Options.addUpdateListener(() => updateReport());
 updateReport();

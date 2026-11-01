@@ -16,18 +16,22 @@ async function updateRuleTables() {
     utils.clearTable(sessionTbl);
 
     for (let rule of rules) {
-        let tbl = dynamicTbl;
-        if (rule.isSession)
-            tbl = sessionTbl;
+        let tbl = rule.isSession ? sessionTbl : dynamicTbl;
         let row = tbl.insertRow(-1);
         let chk = document.createElement("input");
+        let pol = rule.policy;
+
+        delete pol.directives["report-uri"];
+
         chk.type = "checkbox";
         chk.checked = false;
         chk.className = "rule";
+        chk.dataset.id = rule.id;
         row.insertCell(-1).appendChild(chk);
-        row.insertCell(-1).innerText = rule.id;
         row.insertCell(-1).innerText = rule.host;
-        row.insertCell(-1).innerText = rule.policy.toHeader();
+        let cell = row.insertCell(-1);
+        cell.innerText = pol.toHeader();
+        cell.title = cell.innerText;
     }
 
     utils.clearTable(staticTbl);
@@ -74,7 +78,7 @@ document.getElementById('remove').addEventListener("click", async () => {
     let ruleFromId = id => rules.find(r => r.id === id);
 
     for (let chk of checked) {
-        let rule = ruleFromId(parseInt(chk.closest('tr').cells[1].innerText));
+        let rule = ruleFromId(parseInt(chk.dataset.id));
         await RulesManager.delRule(rule);
     }
 
@@ -86,7 +90,7 @@ document.getElementById('commit').addEventListener("click", async () => {
     for (let row of sessionTbl.rows) {
         if (!row.cells[0].firstChild.checked)
             continue;
-        await RulesManager.commitSessionRulesForHost(row.cells[2].innerText);
+        await RulesManager.commitSessionRulesForHost(row.cells[1].innerText);
     }
     updateRuleTables();
 });

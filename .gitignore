@@ -3,3 +3,5 @@
 *.zip
 *.crx
 _metadata/
+*.md
+!README.md

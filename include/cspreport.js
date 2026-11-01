@@ -80,14 +80,15 @@ export default class CspReport {
             case "wasm-eval:":
                 return "'wasm-unsafe-eval'";
             case "opaque:":
-                // Redacted blocked-uri: real scheme hidden, so allow everything
-                // for this directive. Kept in sync with help/sources.json.
-                console.warn("cspreport", "redacted blocked-uri, substituting allow-all source");
-                return "* data: blob:";
+                // Redacted blocked-uri (cross-origin redirect): target origin is
+                // hidden, so substitute the wildcard source.
+                console.warn("cspreport", "redacted blocked-uri, substituting wildcard source");
+                return "*";
             case "about:":
             case "data:":
             case "blob:":
             case "filesystem:":
+            case "mediastream:":
             case "trusted-types-sink:":
                 return protocol;
         }

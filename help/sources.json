@@ -31,6 +31,16 @@
       "description": "Allows the use of inline event handlers (like onclick) if their content matches a trusted hash."
     },
     {
+      "name": "'inline-speculation-rules'",
+      "regex": "^'inline-speculation-rules'$",
+      "description": "Allows the use of inline script elements for prefetching or prerendering."
+    },
+    {
+      "name": "about:",
+      "regex": "^about:$",
+      "description": "Allows loading resources from about: URLs (such as about:blank or about:srcdoc)."
+    },
+    {
       "name": "blob:",
       "regex": "^blob:$",
       "description": "Allows loading resources from blob: URLs (e.g., created with URL.createObjectURL)."
@@ -46,14 +56,14 @@
       "description": "Allows loading resources from filesystem: URLs, created by the deprecated File System API."
     },
     {
-      "name": "*",
-      "regex": "^\\*$",
-      "description": "Allows loading resources from any network origin, but not data:, blob:, or filesystem: URLs."
+      "name": "mediastream:",
+      "regex": "^mediastream:$",
+      "description": "Allows loading media from mediastream: URLs."
     },
     {
-      "name": "* data: blob:",
-      "regex": "^\\* data: blob:$",
-      "description": "A generic source substituted when the browser blocked a resource but withheld its address for privacy reasons."
+      "name": "*",
+      "regex": "^\\*$",
+      "description": "Allows loading resources from any network origin (but not data:, blob:, or filesystem: URLs). Substituted when the browser blocks a cross-origin redirect and withholds its address for privacy."
     },
     {
       "name": "https:",
@@ -64,6 +74,16 @@
       "name": "http:",
       "regex": "^http:$",
       "description": "Allows loading resources from any HTTP origin."
+    },
+    {
+      "name": "wss:",
+      "regex": "^wss:$",
+      "description": "Allows connecting to any secure WebSocket (wss:) endpoint."
+    },
+    {
+      "name": "ws:",
+      "regex": "^ws:$",
+      "description": "Allows connecting to any WebSocket (ws:) endpoint."
     },
     {
       "name": "nonce-",
@@ -77,7 +97,7 @@
     },
     {
       "name": "URL",
-      "regex": "^(?:https?:)?//",
+      "regex": "^(?:https?|wss?)://(\\*\\.)?[\\w-]+(\\.[\\w-]+)*(:(?:\\d+|\\*))?$",
       "description": "Allows loading resources from this specific domain or host."
     },
     {

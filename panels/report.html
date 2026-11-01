@@ -8,26 +8,27 @@
 <body>
 <select id="panel"></select>
 <h1>Report</h1>
+<p class="subtitle">
+    Configure rules for the active website. (<a href="help.html#report" title="Help">?</a>)
+</p>
 <div>
     <button id="commit" title="Make these settings dynamic (persistent) rules">Commit</button>
     <button id="uncommit" title="Demote the dynamic rule for this host to a session rule">Uncommit</button>
     <button id="abandon" title="Discard session changes, restore the dynamic rule">Abandon</button>
     <button id="reset" title="Remove all session and dynamic rules for this host">Reset</button>
     <button id="reload" title="Reload active tab (Hold shift to bypass cache)">Reload</button>
-    <button id="unblock" title="Allow all sources with reported violations">Unblock</button>
 </div>
 <hr>
 <div id="trustcontrol">
-    <p>
-        <label for="trustgroup">Groups</label>
+    <label for="trustgroup" title="Manage saved rules in Groups...">Groups</label>
+    <div>
         <select id="trustgroup"></select>
-    </p>
-    <button id="trust" title="Add all origins from this group as allowed sources">Trust</button>
-    <button id="untrust" title="Uncheck all origins from this group">Untrust</button>
+        <button id="applygroup" title="Apply the selected group's rules">Apply</button>
+    </div>
     <hr>
 </div>
 <div>
-    <table id="sources">
+    <table id="sources" class="sources">
         <caption>
             Source Directives
             <div id=frames></div>
@@ -41,7 +42,7 @@
             <col id=col-frame-src>
             <col id=col-font-src>
             <col id=col-media-src>
-            <col id=col-connect-src class="advanced">
+            <col id=col-connect-src>
             <col id=col-worker-src>
             <col id=col-child-src class="advanced">
             <col id=col-manifest-src class="advanced">
@@ -59,9 +60,9 @@
                 <th id=media-src title="media-src">📽️</th>
                 <th id=connect-src title="connect-src">🔌</th>
                 <th id=worker-src title="worker-src">🔧</th>
-                <th id=child-src title="child-src">👶</th>
-                <th id=manifest-src title="manifest-src">🪪</th>
-                <th id=object-src title="object-src">🧩</th>
+                <th id=child-src class="advanced" title="child-src">👶</th>
+                <th id=manifest-src class="advanced" title="manifest-src">🪪</th>
+                <th id=object-src class="advanced" title="object-src">🧩</th>
             </tr>
         </thead>
         <tbody>
@@ -81,60 +82,60 @@
         </thead>
         <tbody>
             <tr>
-                <th><label for=allow-downloads>Downloads</label></td>
-                <td><input type=checkbox id=allow-downloads class="sandbox allow"></input></td>
+                <th><label for=allow-downloads>Downloads</label></th>
+                <td><input type=checkbox id=allow-downloads class="sandbox allow"></td>
             </tr>
             <tr>
-                <th><label for=allow-forms>Forms</label></td>
-                <td><input type=checkbox id=allow-forms class="sandbox allow"></input></td>
+                <th><label for=allow-forms>Forms</label></th>
+                <td><input type=checkbox id=allow-forms class="sandbox allow"></td>
             </tr>
             <tr>
-                <th><label for=allow-modals>Modals</label></td>
-                <td><input type=checkbox id=allow-modals class="sandbox allow"></input></td>
+                <th><label for=allow-modals>Modals</label></th>
+                <td><input type=checkbox id=allow-modals class="sandbox allow"></td>
             </tr>
             <tr class="advanced">
-                <th><label for=allow-orientation-lock>Orientation Lock</label></td>
-                <td><input type=checkbox id=allow-orientation-lock class="sandbox allow"></input></td>
+                <th><label for=allow-orientation-lock>Orientation Lock</label></th>
+                <td><input type=checkbox id=allow-orientation-lock class="sandbox allow"></td>
             </tr>
             <tr class="advanced">
-                <th><label for=allow-pointer-lock>Pointer Lock</label></td>
-                <td><input type=checkbox id=allow-pointer-lock class="sandbox allow"></input></td>
+                <th><label for=allow-pointer-lock>Pointer Lock</label></th>
+                <td><input type=checkbox id=allow-pointer-lock class="sandbox allow"></td>
             </tr>
             <tr>
-                <th><label for=allow-popups>Popups</label></td>
-                <td><input type=checkbox id=allow-popups class="sandbox allow"></input></td>
+                <th><label for=allow-popups>Popups</label></th>
+                <td><input type=checkbox id=allow-popups class="sandbox allow"></td>
             </tr>
             <tr>
-                <th><label for=allow-popups-to-escape-sandbox>Popups Escape Sandbox</label></td>
-                <td><input type=checkbox id=allow-popups-to-escape-sandbox class="sandbox allow"></input></td>
+                <th><label for=allow-popups-to-escape-sandbox>Popups Escape Sandbox</label></th>
+                <td><input type=checkbox id=allow-popups-to-escape-sandbox class="sandbox allow"></td>
             </tr>
             <tr class="advanced">
-                <th><label for=allow-presentation>Presentation</label></td>
-                <td><input type=checkbox id=allow-presentation class="sandbox allow"></input></td>
+                <th><label for=allow-presentation>Presentation</label></th>
+                <td><input type=checkbox id=allow-presentation class="sandbox allow"></td>
             </tr>
             <tr>
-                <th><label for=allow-same-origin>Same Origin</label></td>
-                <td><input type=checkbox id=allow-same-origin class="sandbox allow"></input></td>
+                <th><label for=allow-same-origin>Same Origin</label></th>
+                <td><input type=checkbox id=allow-same-origin class="sandbox allow"></td>
             </tr>
             <tr>
-                <th><label for=allow-scripts>Scripts</label></td>
-                <td><input type=checkbox id=allow-scripts class="sandbox allow"></input></td>
+                <th><label for=allow-scripts>Scripts</label></th>
+                <td><input type=checkbox id=allow-scripts class="sandbox allow"></td>
             </tr>
             <tr class="advanced">
-                <th><label for=allow-storage-access-by-user-activation>Storage Access by User Activation</label></td>
-                <td><input type=checkbox id=allow-storage-access-by-user-activation class="sandbox allow"></input></td>
+                <th><label for=allow-storage-access-by-user-activation>Storage Access by User Activation</label></th>
+                <td><input type=checkbox id=allow-storage-access-by-user-activation class="sandbox allow"></td>
             </tr>
             <tr>
-                <th><label for=allow-top-navigation>Top Navigation</label></td>
-                <td><input type=checkbox id=allow-top-navigation class="sandbox allow"></input></td>
+                <th><label for=allow-top-navigation>Top Navigation</label></th>
+                <td><input type=checkbox id=allow-top-navigation class="sandbox allow"></td>
             </tr>
             <tr class="advanced">
-                <th><label for=allow-top-navigation-by-user-activation>Top Navigation by User Activation</label></td>
-                <td><input type=checkbox id=allow-top-navigation-by-user-activation class="sandbox allow"></input></td>
+                <th><label for=allow-top-navigation-by-user-activation>Top Navigation by User Activation</label></th>
+                <td><input type=checkbox id=allow-top-navigation-by-user-activation class="sandbox allow"></td>
             </tr>
             <tr class="advanced">
-                <th><label for=allow-top-navigation-to-custom-protocols>Top Navigation to Custom Protocols</label></td>
-                <td><input type=checkbox id=allow-top-navigation-to-custom-protocols class="sandbox allow"></input></td>
+                <th><label for=allow-top-navigation-to-custom-protocols>Top Navigation to Custom Protocols</label></th>
+                <td><input type=checkbox id=allow-top-navigation-to-custom-protocols class="sandbox allow"></td>
             </tr>
         </tbody>
     </table>

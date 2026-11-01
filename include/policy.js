@@ -26,6 +26,18 @@ export default class Policy {
         return false;
     }
 
+    static collapseDirective(directive) {
+        switch (directive) {
+            case "script-src-elem":
+            case "script-src-attr":
+                return "script-src";
+            case "style-src-elem":
+            case "style-src-attr":
+                return "style-src";
+        }
+        return directive;
+    }
+
     // Initialize from a HTTP header.
     fromHeader(headerString = "") {
         let headerTokens = headerString.trim().split(';').filter(f => f.length);

@@ -8,8 +8,11 @@
 <body>
 <select id="panel"></select>
 <h1>Groups</h1>
+<p class="subtitle">
+    A group is a named collection of rules that can be applied easily from the Report page. (<a href="help.html#groups" title="Help">?</a>)
+</p>
 <p>
-    <input type=text id=newname placeholder="Group name" />
+    <input type=text id=newname placeholder="Group name" title="Name your group (e.g. Fonts, Captchas, Videos)" />
     <button id="addgroup">Add Group</button>
 </p>
 <hr>
@@ -17,18 +20,50 @@
 
 <template id="group-template">
     <section class="group">
-        <h3 class="group-name"></h3>
-        <ul></ul>
+        <h3><button class="delgroup" title="Delete Group">&times;</button><span class="group-name"></span></h3>
+        <div>
+            <table class="sources">
+                <colgroup>
+                    <col class=col-src>
+                    <col class=col-default-src>
+                    <col class=col-script-src>
+                    <col class=col-style-src>
+                    <col class=col-img-src>
+                    <col class=col-frame-src>
+                    <col class=col-font-src>
+                    <col class=col-media-src>
+                    <col class=col-connect-src>
+                    <col class=col-worker-src>
+                    <col class="col-child-src advanced">
+                    <col class="col-manifest-src advanced">
+                    <col class="col-object-src advanced">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th id=src title="Source">Source</th>
+                        <th id=default-src title="default-src">📌</th>
+                        <th id=script-src title="script-src">📜</th>
+                        <th id=style-src title="style-src">🦚</th>
+                        <th id=img-src title="img-src">🖼️</th>
+                        <th id=frame-src title="frame-src">🪟</th>
+                        <th id=font-src title="font-src">🔤</th>
+                        <th id=media-src title="media-src">📽️</th>
+                        <th id=connect-src title="connect-src">🔌</th>
+                        <th id=worker-src title="worker-src">🔧</th>
+                        <th id=child-src class="advanced" title="child-src">👶</th>
+                        <th id=manifest-src class="advanced" title="manifest-src">🪪</th>
+                        <th id=object-src class="advanced" title="object-src">🧩</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
+        </div>
         <p>
-            <input type=text class="neworigin" placeholder="Origin">
-            <button class="addorigin">Add Origin</button>
-            <button class="delgroup">Delete Group</button>
+            <input type=text class="neworigin" placeholder="Source" title="Enter a URL like https://*.example.com, or a keyword like 'self'">
+            <button class="addorigin">Add Source</button>
         </p>
     </section>
-</template>
-
-<template id="origin-template">
-    <li><button class="delorigin" title="Remove">&times;</button><span class="origin-name"></span></li>
 </template>
 </body>
 </html>

@@ -548,14 +548,19 @@ export default class Rules {
         let enableRulesetIds = [];
         let disableRulesetIds = [];
 
+        // Only include rulesets whose enabled state actually needs to flip.
         for (let r of this.#staticRulesets) {
             if (r.isRequired())
                 continue;
-            if (wanted.has(r.id))
+            if (wanted.has(r.id) && !r.enabled)
                 enableRulesetIds.push(r.id);
-            else
+            else if (!wanted.has(r.id) && r.enabled)
                 disableRulesetIds.push(r.id);
         }
+
+        // Skip the NOTIFY_RULES broadcast if we know nothing changed.
+        if (enableRulesetIds.length === 0 && disableRulesetIds.length === 0)
+            return;
 
         await this.#updateEnabledRulesets({
             enableRulesetIds,

@@ -4,14 +4,29 @@
 
 button {
     min-width: 6em;
+    white-space: nowrap;
 }
 
 caption {
     text-align: left;
 }
 
+input[type="text"],
 select {
     width: 100%;
+    flex: 1;
+}
+
+/* Keep button rows and input+button rows on a single line */
+:is(div, p):not(#frames):has(> button) {
+    display: flex;
+    gap: 0.3em;
+}
+
+/* Cap buttons at 6em, but allow them to shrink in a narrow panel */
+:is(div, p):not(#frames):has(> button) button {
+    flex: 0 1 6em;
+    min-width: min-content;
 }
 
 table, th, td {
@@ -19,12 +34,13 @@ table, th, td {
     border-collapse: collapse
 }
 
-td:has(input.violation) {
-    background-color: orange;
-}
-
 table {
     width: 100%;
+}
+
+/* Center the checkboxes */
+table td:has(input[type="checkbox"]) {
+    text-align: center;
 }
 
 textarea {
@@ -32,8 +48,95 @@ textarea {
     width: 100%;
     font-family: monospace;
     line-height: 1.5;
-    min-height: -webkit-fill-available;
     max-height: calc(18 * 1.5em);
+}
+
+#panel {
+    position: sticky;
+    top: 1em;
+}
+
+body.standalone #panel {
+    display: none;
+}
+
+/* Source directive tables (Report and Groups panels) */
+div:has(> table.sources) {
+    overflow-x: auto;
+    container-type: inline-size;
+}
+
+table.sources th {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Give the source column all remaining width, with a 10ch floor when advanced columns are shown */
+table.sources thead th:first-child {
+    width: 100%;
+    min-width: 10ch;
+}
+
+/* Clip overflowing source names with ellipsis to whatever width the header column got */
+table.sources tbody th {
+    max-width: 0;
+    font-family: monospace;
+}
+
+/* Hide the scheme prefix in narrow panels while keeping it copyable */
+@container (width < 64ch) {
+    table.sources span.scheme {
+        font-size: 0;
+    }
+}
+
+/* hilight active column */
+table.sources:has(td:nth-child(2):hover)  col:nth-child(2),
+table.sources:has(td:nth-child(3):hover)  col:nth-child(3),
+table.sources:has(td:nth-child(4):hover)  col:nth-child(4),
+table.sources:has(td:nth-child(5):hover)  col:nth-child(5),
+table.sources:has(td:nth-child(6):hover)  col:nth-child(6),
+table.sources:has(td:nth-child(7):hover)  col:nth-child(7),
+table.sources:has(td:nth-child(8):hover)  col:nth-child(8),
+table.sources:has(td:nth-child(9):hover)  col:nth-child(9),
+table.sources:has(td:nth-child(10):hover) col:nth-child(10),
+table.sources:has(td:nth-child(11):hover) col:nth-child(11),
+table.sources:has(td:nth-child(12):hover) col:nth-child(12),
+table.sources:has(td:nth-child(13):hover) col:nth-child(13),
+table.sources tr:hover {
+    background-color: color-mix(in srgb, transparent, CanvasText 18%);
+}
+
+/* Hide advanced columns and rows unless active or enabled in Options */
+:is(col, th, td, tr).advanced {
+    display: none;
+}
+
+/* Reveal advanced directive columns when any advanced cell is checked or has a violation */
+table.sources:has(td.advanced input:is(:checked, :indeterminate, .violation)) :is(col, th, td).advanced {
+    display: revert;
+}
+
+/* Reveal individual advanced sandbox rows when checked */
+tr.advanced:has(input:checked) {
+    display: revert;
+}
+
+/* Force all advanced columns and rows visible when the option is enabled */
+body.show-advanced :is(col, th, td, tr).advanced {
+    display: revert;
+}
+
+/* Report panel */
+/* Commit and Uncommit are mutually exclusive; show whichever is applicable */
+button#commit:has(+ button#uncommit:not(:disabled)),
+button#uncommit:disabled {
+    display: none;
+}
+
+td:has(input.violation) {
+    background-color: orange;
 }
 
 td:has(input.sandbox:not(:checked)):after {
@@ -62,68 +165,11 @@ table#sandbox tbody th {
     white-space: nowrap;
 }
 
-div:has(> #sources) {
-    overflow-x: auto;
-}
-
-table#sources th {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-table#sources tbody th {
-    max-width: calc(18ch + max(100vw - 55ch, 0ch));
-    font-family: monospace;
-}
-
-/* hilight active column */
-table#sources:has(td:nth-child(2):hover)  col:nth-child(2),
-table#sources:has(td:nth-child(3):hover)  col:nth-child(3),
-table#sources:has(td:nth-child(4):hover)  col:nth-child(4),
-table#sources:has(td:nth-child(5):hover)  col:nth-child(5),
-table#sources:has(td:nth-child(6):hover)  col:nth-child(6),
-table#sources:has(td:nth-child(7):hover)  col:nth-child(7),
-table#sources:has(td:nth-child(8):hover)  col:nth-child(8),
-table#sources:has(td:nth-child(9):hover)  col:nth-child(9),
-table#sources:has(td:nth-child(10):hover) col:nth-child(10),
-table#sources:has(td:nth-child(11):hover) col:nth-child(11),
-table#sources:has(td:nth-child(12):hover) col:nth-child(12),
-table#sources:has(td:nth-child(13):hover) col:nth-child(13),
-table#sources tr:hover {
-    background-color: color-mix(in srgb, transparent, CanvasText 18%);
-}
-
 table#sandbox tbody th:before {
     content: " Allow ";
 }
 
 table#sandbox:not(:has(input#sandbox-enabled:checked)) tbody {
-    display: none;
-}
-
-:is(col, tr).advanced {
-    visibility: collapse;
-}
-
-table#sources:has(td.advanced input:is(:checked, .violation)) col.advanced {
-    visibility: visible;
-}
-
-tr.advanced:has(input:checked) {
-    visibility: visible;
-}
-
-body.show-advanced :is(col, tr).advanced {
-    visibility: visible;
-}
-
-#panel {
-    position: sticky;
-    top: 1em;
-}
-
-body.standalone #panel {
     display: none;
 }
 
@@ -137,41 +183,13 @@ div#trustcontrol:not(:has(option)) {
     display: none;
 }
 
-/* Center the checkboxes */
-table td:has(input[type="checkbox"]) {
-    text-align: center;
+label[for="trustgroup"],
+label[for="servercsp"] {
+    display: block;
+    font-size: medium;
 }
 
 div#serverpolicy:has(button:disabled) {
-    display: none;
-}
-
-/* The rules tables */
-table#session tr,
-table#dynamic tr {
-    font-family: monospace;
-}
-
-/* The rule policy text */
-table#session tr td:last-of-type,
-table#dynamic tr td:last-of-type {
-    font-size: smaller;
-}
-
-input#filter {
-    width: 100%;
-}
-
-/* The remove button on the groups panel */
-button.delorigin {
-    min-width: 1em;
-}
-span.origin-name {
-    padding-left: 1em;
-}
-
-/* Hide the divider after the last-push line until it has content */
-#lastpush:empty + hr {
     display: none;
 }
 
@@ -196,4 +214,98 @@ div#frames button:not(.active):hover {
     background: color-mix(in srgb, transparent, CanvasText 8%);
     cursor: pointer;
 }
+
+/* Rules panel */
+table#session tr,
+table#dynamic tr {
+    font-family: monospace;
+}
+
+table#session td,
+table#dynamic td {
+    white-space: nowrap;
+}
+
+/* The rule policy text */
+table#session tr td:last-of-type,
+table#dynamic tr td:last-of-type {
+    font-size: smaller;
+    width: 100%;
+    max-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Groups panel */
+/* Hide the title row if there are no entries */
+section.group table.sources:not(:has(tbody tr)) {
+    display: none;
+}
+
+section.group table.sources tbody th {
+    text-align: left;
+}
+
+section.group tr:not(:hover) button.delorigin {
+    display: none;
+}
+
+button.delorigin,
+button.delgroup {
+    min-width: 1em;
+    line-height: 1;
+    padding: 0 0.2em;
+    margin-right: 0.5em;
+}
+
+/* Users shouldn't delete the Ignore group */
+section.group[data-name="Ignore"] button.delgroup {
+    display: none;
+}
+
+section.group[data-name="Ignore"] h3::after {
+    content: "Sources and directives checked here are hidden from violation reports.";
+    display: block;
+    font-weight: normal;
+    font-size: smaller;
+}
+
+/* Export panel */
+textarea#export {
+    min-height: -webkit-fill-available;
+}
+
+/* Hide the divider after the last-push line until it has content */
+#lastpush:empty + hr {
+    display: none;
+}
+
+/* Help panel */
+summary {
+    font-weight: bold;
+    margin-block: 0.5em;
+    cursor: pointer;
+}
+
+body > details > summary {
+    font-size: 1.5em;
+}
+
+details details {
+    margin-left: 1em;
+}
+
+details table.sources tbody th {
+    text-align: left;
+}
+
+details table.sources input {
+    pointer-events: none;
+}
+
+details > [id] {
+    scroll-margin-top: 4em;
+}
+
+
 

@@ -1,3 +1,0 @@
-- A Default panel that lets you configure a default rule like the Report panel?
-- Mock out chrome calls and automate testing?
-- A disable option for when things arent working.

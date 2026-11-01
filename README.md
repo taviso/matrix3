@@ -40,7 +40,7 @@ When you're happy with the settings, click **Commit** to make them persistent.
 
 ### Suggested Policies
 
-If the server suggests it's own policy, you can either **Accept** or **Merge**
+If the server suggests its own policy, you can either **Accept** or **Merge**
 it with your own rules.
 
 This is entirely optional, you can also ignore what the server suggests.
@@ -104,14 +104,15 @@ individual rules from there.
 
 ## Groups
 
-A *group* is a named bundle of origins you frequently want to trust together
--- for example, the CDNs you allow on most sites, or a set of social media
-embed hosts.
+A *group* is a named bundle of sources and directives you frequently want to
+apply together -- for example, the CDNs you allow on most sites, or a set of
+social media embed hosts.
 
-Define groups in the **Groups** page. Then in the **Report** page, pick a
-group from the dropdown and click **Trust** to allow all of its origins for
-the current host at once. **Untrust** removes them.
+Define groups and select the directives for each source in the **Groups**
+page. Then in the **Report** page, pick a group from the dropdown and click
+**Apply** to add all of its sources and checked directives for the current
+host at once.
 
-The **Ignore** group allows you to hide origins from the **Report** page that
-you're not interested in.
+The **Ignore** group allows you to hide violations for specific sources and
+directives (or all directives via `default-src`) from the **Report** page.
 
