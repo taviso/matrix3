@@ -190,7 +190,6 @@ originList.addEventListener("click", (e) => {
     originList.value = btn.dataset.value;
     userOrigin = originList.value;
     refreshTable(originList.value);
-    populateServerPolicy();
     updateOriginScopeState();
 });
 
@@ -549,7 +548,7 @@ async function populateOriginList(preferredDomain) {
     originList.value = target;
 }
 
-async function populateServerPolicy() {
+async function populateServerPolicy(container) {
     let tab = await sidepanel.getActiveTab();
     let headers;
     let sources = new Set();
@@ -577,9 +576,7 @@ async function populateServerPolicy() {
         .filter(src => kNonceOrHashFull.test(src))
         .forEach(src => sources.add(src));
 
-    sources.forEach(src => addSourceCheckboxRow(src));
-
-    utils.sortTable(directivesTable, compareSourceRows);
+    sources.forEach(src => addSourceCheckboxRow(src, container));
 }
 
 async function refreshViolations(domain) {
@@ -635,12 +632,8 @@ async function refreshTable(domain) {
     resetSandboxDirectives();
 
     await getCurrentRules(domain, fragment);
-
-    let violations = await refreshViolations(domain);
-
-    if (violations) {
-        setCurrentViolations(violations, fragment);
-    }
+    await populateServerPolicy(fragment);
+    setCurrentViolations(await refreshViolations(domain), fragment);
 
     // Sort the fragment children before appending
     let rows = Array.from(fragment.children);
@@ -674,7 +667,6 @@ async function updateReport() {
     let tab = await sidepanel.getActiveTab();
     await populateOriginList(userOrigin);
     await refreshTable(originList.value);
-    populateServerPolicy();
     populateTrustGroups();
     updateOriginScopeState();
 
@@ -709,14 +701,9 @@ async function handleNotifyUpdate(msg) {
     if (msg.data?.id !== tab?.id)
         return;
 
-    let violations = await refreshViolations(originList.value);
-
-    if (violations) {
-        setCurrentViolations(violations);
-        utils.sortTable(directivesTable, compareSourceRows);
-    }
-
-    populateServerPolicy();
+    setCurrentViolations(await refreshViolations(originList.value));
+    await populateServerPolicy();
+    utils.sortTable(directivesTable, compareSourceRows);
 }
 
 chrome.runtime.onMessage.addListener((msg) => {
