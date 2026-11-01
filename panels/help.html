@@ -124,8 +124,12 @@ Checking <code>'none'</code> in a column blocks that resource type completely:
 <p id="rules">
 The <a href="manage.html">Rules</a> page lists all active <i>dynamic</i> rules,
 <i>session</i> rules, and <i>static</i> rulesets across all websites. Use
-<b>Filter</b> to search by host or directive, and select rules to
-<b>Remove</b>, <b>Commit</b>, or <b>Reset</b> them.
+<b>Filter</b> to search by host or directive. You can select multiple rules and
+<b>Remove</b> or <b>Commit</b> them.
+</p>
+<p>
+The <b>Reset</b> button will remove all saved rules after confirmation,
+allowing you to start fresh.
 </p>
 </details>
 <details>
@@ -142,11 +146,13 @@ Payments, and CDNs easily.
 <p>
 You create your groups in the <a href="groups.html">Groups</a> page, and then
 select one in the <a href="report.html">Report</a> page. Click <b>Apply</b> to
-update the current host's rules.
+update the current host's
+<abbr title="A temporary rule that lasts until you close the browser (click Commit to keep it)">session</abbr>
+rules.
 </p>
 <p>
 Each checkbox cycles through three states. A check enables the directive,
-a <b>&minus;</b> unchecks it, and unchecked leaves it unchanged.
+a <b>minus</b> unchecks it, and unchecked leaves it unchanged.
 </p>
 <h3>Ignore</h3>
 <p>
@@ -158,7 +164,7 @@ don't want it cluttering up the report, you can add it here.
 <p>
 If <i>default-src</i> is checked, all violations for this origin will be
 ignored. If you want everything to be ignored <b>except</b> for certain types,
-you can check <i>default-src</i> and set the exclusions to <b>&minus;</b>.
+you can check <i>default-src</i> and set the exclusions to <b>minus</b>.
 </p>
 <h3>Examples</h3>
 <details>
@@ -180,7 +186,7 @@ can easily allow videos from the Report page.
 <summary>Allow a CDN while disabling inline scripts</summary>
 <p>
 Check <i>script-src</i> (📜) for the CDN, and click <i>script-src</i> twice on
-<code>'unsafe-inline'</code> so it shows <b>&minus;</b> (unchecking it when
+<code>'unsafe-inline'</code> so it shows a <b>minus</b> (unchecking it when
 applied):
 </p>
 <div>
@@ -206,8 +212,8 @@ In the <b>Ignore</b> group, add the tracker's origin and check
 <summary>Ignore violations for example.com, unless it's a stylesheet</summary>
 <p>
 In the <b>Ignore</b> group, check <i>default-src</i> (📌) to ignore all
-directives by default, and click <i>style-src</i> (🦚) twice so it shows
-<b>&minus;</b>:
+directives by default, and click <i>style-src</i> (🦚) twice so it shows a
+<b>minus</b>:
 </p>
 <div>
     <table class="sources">
