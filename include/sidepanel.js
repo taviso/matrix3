@@ -1,6 +1,5 @@
 import Rules from '/include/rules.js'
 import Options from '/include/options.js'
-import '/ui-components/all.js'
 
 export let current = await chrome.windows.getCurrent();
 let options = await Options.get();
@@ -14,14 +13,13 @@ if (await chrome.tabs.getCurrent())
 export let RulesManager = new Rules();
 
 const sidepanelPages = {
-        "Report": "/panels/report.html",
-         "Rules": "/panels/manage.html",
-   "Named rules": "/panels/named_rules.html",
-        "Groups": "/panels/groups.html",
-       "Options": "/panels/options.html",
-        "Export": "/panels/export.html",
-          "Help": "/panels/help.html",
-         "About": "/panels/about.html",
+    "Report": "/panels/report.html",
+     "Rules": "/panels/manage.html",
+    "Groups": "/panels/groups.html",
+   "Options": "/panels/options.html",
+    "Export": "/panels/export.html",
+      "Help": "/panels/help.html",
+     "About": "/panels/about.html",
 };
 
 Options.addUpdateListener(() => applyOptions());
