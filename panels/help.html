@@ -89,6 +89,7 @@ Enabling the sandbox runs the document in an isolated origin and blocks
 scripts, forms, popups, downloads, and navigations. You can make exceptions,
 these options will only be visible if the sandbox is enabled.
 </p>
+<p>
 Please note that cookies will not work when sandboxed without <b>Allow Same Origin</b>.
 </p>
 <h3>Server Suggested Policy</h3>
@@ -245,7 +246,7 @@ sites without custom rules:
     <li><b>Sandbox + Scripts:</b> Sandboxes every document in an isolated
     origin, allowing only scripts and forms. Cookies require <b>Allow Same
     Origin</b>.</li>
-    <li><b>Sandbox:</b> Sandbox every document with no exceptions; only static
+    <li><b>Sandbox:</b> Sandboxes every document with no exceptions; only static
     content works by default.</li>
     <li><b>Strict:</b> Blocks everything except first-party styles and
     images.</li>
@@ -253,7 +254,7 @@ sites without custom rules:
 <h3>Always Show Advanced Directives</h3>
 <p>
 Rarely used directives and advanced sandbox flags are hidden unless checked or
-triggered by a violation. This is to reduce unnescessary clutter in reports.
+triggered by a violation. This is to reduce unnecessary clutter in reports.
 Enable this to always show them.
 </p>
 <h3>Show Icon Badges</h3>
@@ -288,7 +289,8 @@ control over individual hosts within a domain. If you're not sure, stick with
 <summary>Export</summary>
 <p id="export">
 In the <a href="export.html">Export</a> page, <b>Download</b> allows you to
-backup your rules and settings to a JSON file.
+backup your rules and settings to a JSON file, and <b>Import</b> restores them
+from a backup.
 </p>
 <h3>Sync</h3>
 <p>
