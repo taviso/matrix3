@@ -9,9 +9,9 @@ features for each site.
 
 <img width="303" src="https://github.com/user-attachments/assets/aaa3d687-cf5d-432a-b38b-f4b02454843a" />
 
-This extension basically just provides an interface to `Content-Security-Policy`, so
-familiarity with the CSP3 specification is a bonus. It is currently just a prototype.
-
+This extension provides an interface to `Content-Security-Policy`, so
+familiarity with the CSP3 specification is a bonus, but built-in **Help**
+includes examples for common tasks.
 
 ## Installation
 
@@ -26,11 +26,12 @@ For the latest development version, follow these steps:
 ## Usage
 
 Open the sidepanel via the matrix³ toolbar icon. If this is your first time
-using the extension, choose a default policy in the **Options** page.
+using the extension, choose a default policy in the **Options** panel.
 
 If a site doesn't work, click the toolbar icon and open the **Report** page.
-If you're using `sandbox`, try disabling it and see what resources the site
-requests.
+If the page embeds frames from other origins, each origin appears as a tab
+above the table. If you're using `sandbox`, try disabling it and see what
+resources the site requests.
 
 Any subresource the page requested that was denied is highlighted in orange.
 You can enable options until the site works, then click **Reload** to reload
@@ -50,6 +51,9 @@ This is entirely optional, you can also ignore what the server suggests.
 The default policy is **Permissive**, which means nothing is blocked by default
 until you configure specific rules.
 
+For example, if you want to block a site from using fonts, you could set
+`font-src` to `'none'`.
+
 If you find you want a more restrictive baseline, change the level in
 **Options**. The available policies are described here.
 
@@ -66,9 +70,9 @@ give them permission in the **Report** tab.
 
 ### Sandbox + Scripts
 
-The `sandbox` attribute is applied to every document, but some scripts and
-forms are allowed. Popups, downloads, and navigations are all blocked, and the
-document runs in a strict isolated origin.
+The `sandbox` attribute is applied to every document, which limits what sites
+are allowed to do. Some scripts and forms are allowed, but popups, downloads,
+and navigations are all blocked, and scripts runs in a strict isolated origin.
 
 Many simple sites will work, but most complex sites will require exceptions in
 the **Report** tab.
@@ -99,20 +103,4 @@ A *dynamic* rule is **persistent** and is maintained when you restart Chrome.
 A *session* rule is **ephemeral** and discarded when you restart Chrome. This
 is the default, you must click **Commit** to make a rule *dynamic*.
 
-The **Rules** panel shows all dynamic and session rules; you can delete
-individual rules from there.
-
-## Groups
-
-A *group* is a named bundle of sources and directives you frequently want to
-apply together -- for example, the CDNs you allow on most sites, or a set of
-social media embed hosts.
-
-Define groups and select the directives for each source in the **Groups**
-page. Then in the **Report** page, pick a group from the dropdown and click
-**Apply** to add all of its sources and checked directives for the current
-host at once.
-
-The **Ignore** group allows you to hide violations for specific sources and
-directives (or all directives via `default-src`) from the **Report** page.
-
+See the documentation for more information.
