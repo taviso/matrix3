@@ -72,7 +72,7 @@ give them permission in the **Report** tab.
 
 The `sandbox` attribute is applied to every document, which limits what sites
 are allowed to do. Some scripts and forms are allowed, but popups, downloads,
-and navigations are all blocked, and scripts runs in a strict isolated origin.
+and navigations are all blocked, and scripts run in a strict isolated origin.
 
 Many simple sites will work, but most complex sites will require exceptions in
 the **Report** tab.
@@ -103,4 +103,4 @@ A *dynamic* rule is **persistent** and is maintained when you restart Chrome.
 A *session* rule is **ephemeral** and discarded when you restart Chrome. This
 is the default, you must click **Commit** to make a rule *dynamic*.
 
-See the documentation for more information.
+See the built-in **Help** panel for more information.
