@@ -1,7 +1,7 @@
 
 # matrix³
 
-This is matrix³, an experimental content policy manager, inspired by
+This is matrix³, an experimental content policy manager inspired by
 [umatrix](https://github.com/gorhill/uMatrix), but built on `declarativeNetRequest`.
 
 It looks like this -- it adds a sidepanel that lets you enable or disable web
@@ -55,7 +55,7 @@ For example, if you want to block a site from using fonts, you could set
 `font-src` to `'none'`.
 
 If you find you want a more restrictive baseline, change the level in
-**Options**. The available policies are described here.
+**Options**. The available policies are described below.
 
 ### Permissive
 
