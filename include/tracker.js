@@ -12,13 +12,73 @@ class Tab {
     server = {};
     policy = {};
     documents = new Set();
+
+    deserialize(data) {
+        for (let [k, v] of Object.entries(data.server ?? {}))
+            this.server[k] = new Set(v);
+        for (let [domain, dirs] of Object.entries(data.policy ?? {})) {
+            this.policy[domain] = {};
+            for (let [dir, srcs] of Object.entries(dirs))
+                this.policy[domain][dir] = new Set(srcs);
+        }
+        this.documents.clear();
+        data.documents?.forEach(d => this.documents.add(d));
+        return this;
+    }
+
+    // chrome.storage JSON-serializes values, which turns Set instances into
+    // empty "{}" objects; convert Sets to plain arrays before storing.
+    serialize() {
+        return {
+            server: Object.fromEntries(
+                Object.entries(this.server).map(([k, v]) => [k, Array.from(v)])
+            ),
+            policy: Object.fromEntries(
+                Object.entries(this.policy).map(([domain, dirs]) => [
+                    domain,
+                    Object.fromEntries(
+                        Object.entries(dirs).map(([dir, srcs]) => [dir, Array.from(srcs)])
+                    ),
+                ])
+            ),
+            documents: Array.from(this.documents),
+        };
+    }
 }
 
 export default class ViolationTracker {
     #tabs;
+    #state;
+    #timer;
 
     constructor () {
         this.#tabs = new Map();
+        this.#state = this.#loadState();
+    }
+
+    async #loadState() {
+        let { tabs } = await chrome.storage.session.get("tabs");
+        for (let [id, val] of Object.entries(tabs ?? {}))
+            if (!this.#tabs.has(Number(id)))
+                this.#tabs.set(Number(id), new Tab().deserialize(val));
+    }
+
+    // MV3 service workers terminate after ~30s idle without firing onSuspend,
+    // so coalesce writes into chrome.storage.session on a 10s timer to survive
+    // unloads without serializing on every event.
+    #syncSession = async () => {
+        await this.#state;
+        console.debug("tracker", `saving ${this.#tabs.size} tabs to session storage`, this.#tabs);
+        let tabs = Object.fromEntries(
+            Array.from(this.#tabs, ([id, tab]) => [id, tab.serialize()])
+        );
+        chrome.storage.session.set({ tabs })
+            .catch(e => console.warn("tracker", "failed to save session state", e));
+        this.#timer = undefined;
+    };
+
+    #saveState() {
+        this.#timer ??= setTimeout(this.#syncSession, 10000);
     }
 
     #getOrCreateTab(tabId) {
@@ -74,6 +134,7 @@ export default class ViolationTracker {
         tab.policy[domain] ??= {};
         tab.policy[domain][report.directive] ??= new Set();
         tab.policy[domain][report.directive].add(blocked);
+        this.#saveState();
 
         // Caller uses our return value to decide whether to badge and notify;
         // ignored origins are recorded silently.
@@ -89,21 +150,23 @@ export default class ViolationTracker {
     }
 
     // Called from webNavigation.onBeforeNavigate; drop everything we know about the tab.
-    resetTab(tabId) {
+    async resetTab(tabId) {
+        await this.#state;
         this.#tabs.delete(tabId);
+        this.#saveState();
     }
 
     resetViolations(tabId) {
-        let tab = this.#tabs.get(tabId);
-        if (tab) {
-            tab.policy = {};
-            tab.documents.clear();
-        }
+        let tab = this.#getOrCreateTab(tabId);
+        tab.policy = {};
+        tab.documents.clear();
+        this.#saveState();
     }
 
     resetServerPolicy(tabId) {
-        let tab = this.#tabs.get(tabId);
-        if (tab) tab.server = {};
+        let tab = this.#getOrCreateTab(tabId);
+        tab.server = {};
+        this.#saveState();
     }
 
     // Track which documentIds are currently live for the tab so we can drop
@@ -111,6 +174,7 @@ export default class ViolationTracker {
     // from the previous page that arrive after a reload).
     addDocument(tabId, documentId) {
         this.#getOrCreateTab(tabId).documents.add(documentId);
+        this.#saveState();
     }
 
     hasDocument(tabId, documentId) {
@@ -122,14 +186,17 @@ export default class ViolationTracker {
         let domain = await psl.getScopedDomain(new URL(url).hostname);
         tab.server[domain] ??= new Set();
         tab.server[domain].add(header);
+        this.#saveState();
     }
 
-    getServerPolicy(tabId, domain) {
+    async getServerPolicy(tabId, domain) {
+        await this.#state;
         let tab = this.#tabs.get(tabId);
         return Array.from(tab?.server[domain] ?? []);
     }
 
-    getDirectives(tabId, domain) {
+    async getDirectives(tabId, domain) {
+        await this.#state;
         let tab = this.#tabs.get(tabId);
         let bucket = tab?.policy[domain] ?? {};
 

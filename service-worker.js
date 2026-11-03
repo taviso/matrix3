@@ -5,8 +5,8 @@ import Rules from '/include/rules.js'
 import { MessageTypes } from '/include/commands.js'
 import Options from '/include/options.js'
 
-// Tracker state is in-memory; MV3 unloads the service worker after ~30s idle
-// and the captured CSP/violations vanish. Reload the tab to recapture.
+// Tracker state is backed by chrome.storage.session so it survives MV3
+// service worker idle unloads.
 let tracker = new ViolationTracker();
 let server = new RequestServer(tracker);
 

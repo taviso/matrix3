@@ -11,11 +11,11 @@ export default class RequestServer {
     messageHandler(request, sender, sendResponse) {
         switch (request.command) {
             case MessageTypes.REQ_POLICY:
-                sendResponse(this.tracker.getDirectives(request.data.id, request.data.domain));
-                break;
+                this.tracker.getDirectives(request.data.id, request.data.domain).then(sendResponse);
+                return true;
             case MessageTypes.REQ_HEADERS:
-                sendResponse(this.tracker.getServerPolicy(request.data.id, request.data.domain));
-                break;
+                this.tracker.getServerPolicy(request.data.id, request.data.domain).then(sendResponse);
+                return true;
         }
     }
 }
