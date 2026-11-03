@@ -64,6 +64,7 @@ export default class ViolationTracker {
 
     async #loadState() {
         let { tabs } = await chrome.storage.session.get("tabs");
+        console.debug("tracker", `restoring ${Object.keys(tabs ?? {}).length} tabs from session storage`, tabs);
         for (let [id, val] of Object.entries(tabs ?? {}))
             if (!this.#tabs.has(Number(id)))
                 this.#tabs.set(Number(id), new Tab().deserialize(val));
@@ -74,14 +75,16 @@ export default class ViolationTracker {
     // if something fails, it just means we might forget about an old violation.
     #syncSession = async () => {
         await this.#state;
-        console.debug("tracker", `saving ${this.#tabs.size} tabs to session storage`, this.#tabs);
         let tabs = Object.fromEntries(
             Array.from(this.#tabs, ([id, tab]) => [id, tab.serialize()])
         );
+        console.debug("tracker", `saving ${Object.keys(tabs).length} tabs to session storage`, tabs);
         chrome.storage.session.set({ tabs })
             .catch(e => console.warn("tracker", "failed to save session state", e));
     };
 
+    // This clearTimeout/setTimeout is intended to wait until we're idle for 10s, then
+    // save our state to session storage.
     #saveState() {
         clearTimeout(this.#timer);
         this.#timer = setTimeout(this.#syncSession, 10000);
