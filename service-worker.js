@@ -58,7 +58,7 @@ chrome.webRequest.onHeadersReceived.addListener(async (details) => {
 
         // handle mainframe navigations.
         if (details.frameId === 0)
-            tracker.resetServerPolicy(details.tabId);
+            await tracker.resetServerPolicy(details.tabId);
 
         // Track each policy header the server sends; the tracker collects them
         // in a Set so the UI can display and analyze all of them.
@@ -83,7 +83,7 @@ chrome.webRequest.onBeforeRequest.addListener(async (details) => {
 
         // Drop reports from documents that no longer exist -- POSTs from the
         // previous page can still be in flight when the user reloads.
-        if (!tracker.hasDocument(details.tabId, details.documentId))
+        if (!await tracker.hasDocument(details.tabId, details.documentId))
             return;
 
         // Check if we're learning about a new violation.

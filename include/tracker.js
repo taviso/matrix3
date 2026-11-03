@@ -63,18 +63,17 @@ export default class ViolationTracker {
     }
 
     async #loadState() {
-        let { tabs } = await chrome.storage.session.get("tabs");
-        console.debug("tracker", `restoring ${Object.keys(tabs ?? {}).length} tabs from session storage`, tabs);
-        for (let [id, val] of Object.entries(tabs ?? {}))
-            if (!this.#tabs.has(Number(id)))
-                this.#tabs.set(Number(id), new Tab().deserialize(val));
+        let { tabs = {} } = await chrome.storage.session.get("tabs")
+            .catch(e => (console.warn("tracker", "failed to load session state", e), {}));
+        console.debug("tracker", `restoring ${Object.keys(tabs).length} tabs from session storage`, tabs);
+        for (let [id, val] of Object.entries(tabs))
+            this.#tabs.set(Number(id), new Tab().deserialize(val));
     }
 
     // MV3 service workers terminate after ~30s idle, so we backup our working
     // data to chrome.storage.session when we're idle. This data isn't critical
     // if something fails, it just means we might forget about an old violation.
-    #syncSession = async () => {
-        await this.#state;
+    #syncSession = () => {
         let tabs = Object.fromEntries(
             Array.from(this.#tabs, ([id, tab]) => [id, tab.serialize()])
         );
@@ -98,7 +97,9 @@ export default class ViolationTracker {
     }
 
     async addTabViolation(tabId, report) {
+        await this.#state;
         let tab = this.#getOrCreateTab(tabId);
+        let policy = tab.policy;
         let blocked = report.blocked?.origin;
         let docUrl;
 
@@ -111,12 +112,13 @@ export default class ViolationTracker {
             return false;
         }
 
+        if (!docUrl.hostname)
+            return false;
+
         let origin = docUrl.origin;
 
         // Normalize some sources
-        if (blocked == origin) {
-            blocked = "'self'";
-        } else if (blocked == "null") {
+        if (blocked == "null") {
             // Opaque origins (inline, eval, data, blob, etc) have origin "null".
             // Map them back to their CSP source keywords using the protocol.
             blocked = CspReport.protocolSource(report.blocked.protocol);
@@ -124,6 +126,8 @@ export default class ViolationTracker {
                 console.warn("tracker", "unknown blocked pseudo-scheme", report.blocked);
                 return false;
             }
+        } else if (blocked == origin) {
+            blocked = "'self'";
         } else {
             // Collapse subdomains to a wildcard at the user's chosen scope. In
             // "host" scope getScopedDomain is a passthrough and the wildcard
@@ -139,15 +143,19 @@ export default class ViolationTracker {
         // Bucket by the document's scope so the panel can find it with the
         // same key it puts in the dropdown.
         let domain = await psl.getScopedDomain(docUrl.hostname);
+        let options = await Options.get();
 
-        tab.policy[domain] ??= {};
-        tab.policy[domain][report.directive] ??= new Set();
-        tab.policy[domain][report.directive].add(blocked);
+        // Drop if the tab or its violations were reset while we were awaiting.
+        if (this.#tabs.get(tabId) !== tab || tab.policy !== policy)
+            return false;
+
+        policy[domain] ??= {};
+        policy[domain][report.directive] ??= new Set();
+        policy[domain][report.directive].add(blocked);
         this.#saveState();
 
         // Caller uses our return value to decide whether to badge and notify;
         // ignored origins are recorded silently.
-        let options = await Options.get();
         let ignored = options?.groups?.Ignore?.[blocked];
         let dir = Policy.collapseDirective(report.directive);
         if (ignored?.includes(`!${dir}`))
@@ -158,21 +166,23 @@ export default class ViolationTracker {
         return true;
     }
 
-    // Called from webNavigation.onBeforeNavigate; drop everything we know about the tab.
+    // Called from tabs.onRemoved / tabs.onReplaced; drop everything we know about the tab.
     async resetTab(tabId) {
         await this.#state;
         this.#tabs.delete(tabId);
         this.#saveState();
     }
 
-    resetViolations(tabId) {
+    async resetViolations(tabId) {
+        await this.#state;
         let tab = this.#getOrCreateTab(tabId);
         tab.policy = {};
         tab.documents.clear();
         this.#saveState();
     }
 
-    resetServerPolicy(tabId) {
+    async resetServerPolicy(tabId) {
+        await this.#state;
         let tab = this.#getOrCreateTab(tabId);
         tab.server = {};
         this.#saveState();
@@ -181,20 +191,26 @@ export default class ViolationTracker {
     // Track which documentIds are currently live for the tab so we can drop
     // csp_reports from documents that no longer exist (e.g. POSTs in flight
     // from the previous page that arrive after a reload).
-    addDocument(tabId, documentId) {
+    async addDocument(tabId, documentId) {
+        await this.#state;
         this.#getOrCreateTab(tabId).documents.add(documentId);
         this.#saveState();
     }
 
-    hasDocument(tabId, documentId) {
+    async hasDocument(tabId, documentId) {
+        await this.#state;
         return this.#tabs.get(tabId)?.documents.has(documentId) ?? false;
     }
 
     async addServerPolicy(tabId, url, header) {
+        await this.#state;
         let tab = this.#getOrCreateTab(tabId);
+        let server = tab.server;
         let domain = await psl.getScopedDomain(new URL(url).hostname);
-        tab.server[domain] ??= new Set();
-        tab.server[domain].add(header);
+        if (this.#tabs.get(tabId) !== tab || tab.server !== server)
+            return;
+        server[domain] ??= new Set();
+        server[domain].add(header);
         this.#saveState();
     }
 
