@@ -13,6 +13,14 @@ class Tab {
     policy = {};
     documents = new Set();
 
+    // Chrome will suspend our service worker when idle, and we'll lose any
+    // data we're tracking in memory. That's not a big problem, just a minor
+    // UX issue - if a user refreshes the sidepanel after a suspend we will
+    // have forgotten about older violations.
+    // To avoid that, we can save the data to session storage when idle, then
+    // restore it when we wake up. The problem is session storage is JSON based,
+    // so we can't just store a Set object directly. These routines
+    // serialize/unserialize our data to something that works.
     deserialize(data) {
         for (let [k, v] of Object.entries(data.server ?? {}))
             this.server[k] = new Set(v);
@@ -26,8 +34,6 @@ class Tab {
         return this;
     }
 
-    // chrome.storage JSON-serializes values, which turns Set instances into
-    // empty "{}" objects; convert Sets to plain arrays before storing.
     serialize() {
         return {
             server: Object.fromEntries(
@@ -63,9 +69,9 @@ export default class ViolationTracker {
                 this.#tabs.set(Number(id), new Tab().deserialize(val));
     }
 
-    // MV3 service workers terminate after ~30s idle without firing onSuspend,
-    // so coalesce writes into chrome.storage.session on a 10s timer to survive
-    // unloads without serializing on every event.
+    // MV3 service workers terminate after ~30s idle, so we backup our working
+    // data to chrome.storage.session when we're idle. This data isn't critical
+    // if something fails, it just means we might forget about an old violation.
     #syncSession = async () => {
         await this.#state;
         console.debug("tracker", `saving ${this.#tabs.size} tabs to session storage`, this.#tabs);
@@ -74,11 +80,11 @@ export default class ViolationTracker {
         );
         chrome.storage.session.set({ tabs })
             .catch(e => console.warn("tracker", "failed to save session state", e));
-        this.#timer = undefined;
     };
 
     #saveState() {
-        this.#timer ??= setTimeout(this.#syncSession, 10000);
+        clearTimeout(this.#timer);
+        this.#timer = setTimeout(this.#syncSession, 10000);
     }
 
     #getOrCreateTab(tabId) {
