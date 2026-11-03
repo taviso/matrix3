@@ -50,19 +50,19 @@ fonts, or choosing which third parties can provide subresources.
 </p>
 <p>
 The first thing you probably want to do is choose a default policy in the
-<a href="#options">Options</a> page.
+<a href="#options">Options</a> panel.
 </p>
 <details>
 <summary>Report</summary>
 <p id="report">
-This is the primary page for interacting with matrix³. It lets you control the
+This is the primary panel for interacting with matrix³. It lets you control the
 permissions of the active website. If the page embeds frames from other
 <abbr title="The domain or hostname of a website (e.g. example.com)">origins</abbr>,
 each origin appears as a tab above the table.
 </p>
 <h3>Session and Dynamic Rules</h3>
 <p>
-Toggling a checkbox in the <a href="report.html">Report</a> page creates a
+Toggling a checkbox in the <a href="report.html">Report</a> panel creates a
 temporary <i>session</i> rule that lasts until you close the browser. Remember
 to reload the page after making any changes.
 </p>
@@ -130,7 +130,7 @@ Checking <code>'none'</code> in a column blocks that resource type completely:
 <details>
 <summary>Rules</summary>
 <p id="rules">
-The <a href="manage.html">Rules</a> page lists all active <i>dynamic</i> rules,
+The <a href="manage.html">Rules</a> panel lists all active <i>dynamic</i> rules,
 <i>session</i> rules, and <i>static</i> rulesets across all websites. Use
 <b>Filter</b> to search by host or directive. You can select multiple rules and
 <b>Remove</b> or <b>Commit</b> them in one operation.
@@ -138,7 +138,7 @@ The <a href="manage.html">Rules</a> page lists all active <i>dynamic</i> rules,
 <p>
 The <b>Reset</b> button will remove all saved rules after confirmation,
 allowing you to start fresh. You should backup your settings from the <a
-href="export.html">Export</a> page first, just in case.
+href="export.html">Export</a> panel first, just in case.
 </p>
 </details>
 <details>
@@ -153,8 +153,8 @@ If you browse in a strict mode, this can help you enable Embedded Content,
 Payments, and CDNs easily.
 </p>
 <p>
-You create your groups in the <a href="groups.html">Groups</a> page, and then
-select one in the <a href="report.html">Report</a> page. Click <b>Apply</b> to
+You create your groups in the <a href="groups.html">Groups</a> panel, and then
+select one in the <a href="report.html">Report</a> panel. Click <b>Apply</b> to
 update the current host's
 <abbr title="A temporary rule that lasts until you close the browser (click Commit to keep it)">session</abbr>
 rules.
@@ -181,7 +181,7 @@ certain types, you can check <i>default-src</i> and set the exclusions to <b>min
 <p>
 To allow sites to embed videos that also load images and scripts from a CDN,
 create a group (e.g. <i>Video</i>) and check the needed directives. Now you
-can easily allow videos from the Report page.
+can easily allow videos from the Report panel.
 </p>
 <div>
     <table class="sources">
@@ -235,12 +235,12 @@ directives by default, and click <i>style-src</i> (🦚) twice so it shows a
 <summary>Options</summary>
 <h3 id="options">Default Policy Strictness</h3>
 <p>
-Sets the baseline policy in the <a href="options.html">Options</a> page for
+Sets the baseline policy in the <a href="options.html">Options</a> panel for
 sites without custom rules:
 </p>
 <ul>
     <li><b>Permissive:</b> Nothing is blocked by default; restrict sites
-    individually in the <a href="report.html">Report</a> page.</li>
+    individually in the <a href="report.html">Report</a> panel.</li>
     <li><b>First Party:</b> Allows first-party resources and third-party
     images, styles, and fonts. Blocks third-party scripts.</li>
     <li><b>Sandbox + Scripts:</b> Sandboxes every document in an isolated
@@ -288,7 +288,7 @@ control over individual hosts within a domain. If you're not sure, stick with
 <details>
 <summary>Export</summary>
 <p id="export">
-In the <a href="export.html">Export</a> page, <b>Download</b> allows you to
+In the <a href="export.html">Export</a> panel, <b>Download</b> allows you to
 backup your rules and settings to a JSON file, and <b>Import</b> restores them
 from a backup.
 </p>

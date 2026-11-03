@@ -28,7 +28,7 @@ For the latest development version, follow these steps:
 Open the sidepanel via the matrix³ toolbar icon. If this is your first time
 using the extension, choose a default policy in the **Options** panel.
 
-If a site doesn't work, click the toolbar icon and open the **Report** page.
+If a site doesn't work, click the toolbar icon and open the **Report** panel.
 If the page embeds frames from other origins, each origin appears as a tab
 above the table. If you're using `sandbox`, try disabling it and see what
 resources the site requests.
@@ -60,13 +60,13 @@ If you find you want a more restrictive baseline, change the level in
 ### Permissive
 
 Nothing is blocked by default. If you want to reduce permissions for a specific
-site, you need to adjust it in the **Report** tab.
+site, you need to adjust it in the **Report** panel.
 
 ### First Party
 
 First-party scripts and resources are generally allowed, along with third-party
 images, styles, and fonts. Third-party scripts are blocked unless you
-give them permission in the **Report** tab.
+give them permission in the **Report** panel.
 
 ### Sandbox + Scripts
 
@@ -75,7 +75,7 @@ are allowed to do. Some scripts and forms are allowed, but popups, downloads,
 and navigations are all blocked, and scripts run in a strict isolated origin.
 
 Many simple sites will work, but most complex sites will require exceptions in
-the **Report** tab.
+the **Report** panel.
 
 Cookies will *mostly* not work unless you enable "Allow Same Origin".
 
