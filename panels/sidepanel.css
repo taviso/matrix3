@@ -129,10 +129,16 @@ body.show-advanced :is(col, th, td, tr).advanced {
 }
 
 /* Report panel */
-/* Commit and Uncommit are mutually exclusive; show whichever is applicable */
+/* Commit/Uncommit and Disable/Resume are mutually exclusive pairs */
 button#commit:has(+ button#uncommit:not(:disabled)),
-button#uncommit:disabled {
+button#uncommit:disabled,
+button#disable:has(+ button#resume:not(:disabled)),
+button#resume:disabled {
     display: none;
+}
+
+button#resume {
+    filter: sepia(1) saturate(3) hue-rotate(-50deg);
 }
 
 td:has(input.violation) {
@@ -173,7 +179,8 @@ table#sandbox:not(:has(input#sandbox-enabled:checked)) tbody {
     display: none;
 }
 
-body.inert :is(button, table, textarea, #trustcontrol) {
+body.inert :is(button, table, textarea, #trustcontrol),
+body:has(button#resume:not(:disabled)) :is(button:not(#resume, #reload), table, textarea, #trustcontrol) {
     opacity: 0.4;
     pointer-events: none;
 }

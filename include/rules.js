@@ -1,10 +1,11 @@
 import Policy from '/include/policy.js'
 import { MessageTypes } from '/include/commands.js'
 
-// dNR priorities are ordinal: session > dynamic > static.
+// dNR priorities are ordinal: bypass > session > dynamic > static.
 const kStaticPriority  = 1;
 const kDynamicPriority = 2;
 const kSessionPriority = 3;
+const kBypassPriority  = 4;
 
 // Sync key recording when we last pushed rules.
 const kLastPushKey = "meta:lastpush";
@@ -43,6 +44,14 @@ class Rule {
 
     get host() {
         return this.condition.urlFilter?.slice(2, -1);
+    }
+
+    set tabId(tabId) {
+        this.condition.tabIds = [tabId];
+    }
+
+    get tabId() {
+        return this.condition.tabIds?.[0];
     }
 
     get policy() {
@@ -148,6 +157,7 @@ export default class Rules {
     #staticRulesets;
     #id;
     #rules;
+    #exempt;
 
     // Map the defaultpolicy option slider to the static ruleset it enables.
     static PolicyRulesets = [
@@ -174,9 +184,13 @@ export default class Rules {
         ]);
 
         this.#rules = new Map();
+        this.#exempt = new Map();
 
         dynamic.forEach(r => this.#setRule(new Rule(r)));
-        session.forEach(r => this.#setRule(new Rule(r, true)));
+        session.filter(r => r.condition.urlFilter)
+            .forEach(r => this.#setRule(new Rule(r, true)));
+        session.filter(r => r.condition.tabIds)
+            .forEach(r => r.condition.tabIds.forEach(t => this.#exempt.set(t, r.id)));
 
         // Chrome's API doesn't list disabled rulesets, so enumerate them from the manifest.
         this.#staticRulesets ??= chrome.runtime.getManifest()
@@ -190,7 +204,10 @@ export default class Rules {
         }
 
         // Collect all the rule ids currently refined.
-        let dynamicAndSessionIds = this.getRules().map(r => r.id);
+        let dynamicAndSessionIds = [
+            ...this.getRules().map(r => r.id),
+            ...this.#exempt.values(),
+        ];
 
         // Find the next available id to assign to new rules.
         this.#id = Math.max(0, ...dynamicAndSessionIds);
@@ -539,6 +556,41 @@ export default class Rules {
 
     getAllStaticRules() {
         return this.#staticRulesets;
+    }
+
+    isTabExempt(tabId) {
+        return this.#exempt?.has(tabId) ?? false;
+    }
+
+    async addTabExemption(tabId) {
+        if (!tabId || this.#exempt.has(tabId))
+            return;
+
+        let rule = new Rule(null, true);
+        rule.id = this.#getNextId();
+        rule.priority = kBypassPriority;
+        rule.action = { type: "allow" };
+        rule.tabId = tabId;
+
+        this.#exempt.set(tabId, rule.id);
+
+        await this.#updateSessionRules({
+            removeRuleIds: [],
+            addRules: [rule.toRule()],
+        });
+    }
+
+    async delTabExemption(tabId) {
+        let id = this.#exempt.get(tabId);
+        if (!id)
+            return;
+
+        this.#exempt.delete(tabId);
+
+        await this.#updateSessionRules({
+            removeRuleIds: [id],
+            addRules: [],
+        });
     }
 
     // Enable exactly the named static rulesets (plus required ones); disable

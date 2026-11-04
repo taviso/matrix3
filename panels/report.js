@@ -88,6 +88,16 @@ document.body.addEventListener('click', async (e) => {
         case 'uncommit':
             await RulesManager.uncommitDynamicRulesForHost(host);
             break;
+        case 'disable': {
+            let tab = await sidepanel.getActiveTab();
+            await RulesManager.addTabExemption(tab?.id);
+            break;
+        }
+        case 'resume': {
+            let tab = await sidepanel.getActiveTab();
+            await RulesManager.delTabExemption(tab?.id);
+            break;
+        }
         case 'reload':
             await chrome.tabs.reload(undefined, { bypassCache: e.shiftKey });
             return;
@@ -520,7 +530,7 @@ async function setCurrentRules(hostName)
         policy.directives.sandbox = features;
 
     await RulesManager.addSessionRule(hostName, policy);
-    updateButtonStates();
+    await updateButtonStates();
 }
 
 async function populateOriginList(preferredDomain) {
@@ -647,7 +657,8 @@ function updateOriginScopeState() {
 // Commit and Abandon only make sense when there's a session rule for the
 // host -- otherwise there's nothing to promote or discard. Uncommit is the
 // inverse: a dynamic rule with no session draft in the way.
-function updateButtonStates() {
+async function updateButtonStates() {
+    let tab = await sidepanel.getActiveTab();
     let host = originList.value;
     let rules = RulesManager.getRules().filter(r => r.host === host);
     let hasSession = rules.some(r => r.isSession);
@@ -656,6 +667,7 @@ function updateButtonStates() {
     document.getElementById('abandon').disabled = !hasSession;
     document.getElementById('uncommit').disabled = !hasDynamic || hasSession;
     document.getElementById('reset').disabled = !hasSession && !hasDynamic;
+    document.getElementById('resume').disabled = !RulesManager.isTabExempt(tab?.id);
 }
 
 async function refreshTable(domain) {
@@ -677,7 +689,7 @@ async function refreshTable(domain) {
     // Atomic swap
     directivesTable.tBodies[0].replaceChildren(fragment);
 
-    updateButtonStates();
+    await updateButtonStates();
 }
 
 function populateTrustGroups() {
