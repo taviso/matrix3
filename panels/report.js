@@ -13,8 +13,14 @@ document.querySelectorAll("td input.sandbox").forEach(box => {
     box.title = sidepanel.helpData.sandbox[box.id] ?? "";
 });
 
+// Populate the source directive tables from the shared template.
+document.querySelectorAll("table.sources").forEach(table => {
+    table.append(document.getElementById("sources-template").content.cloneNode(true));
+});
+
 const directivesTable = document.querySelector("table#sources")
 const sandboxTable = document.querySelector("table#sandbox")
+const serverTable = document.querySelector("table#serversources")
 
 const originList = document.querySelector("div#frames")
 
@@ -40,9 +46,6 @@ let userOrigin;
 
 // Recognises the prefix of a CSP nonce-source or hash-source value.
 const kNonceOrHashPrefix = /^'(?:nonce-|sha(?:256|384|512)-)/;
-
-// Matches the base64 value suffix defined by the CSP3 grammar.
-const kNonceOrHashFull = new RegExp(kNonceOrHashPrefix.source + /[A-Za-z0-9+/_-]+={0,2}'$/.source);
 
 // Find all origins currently loaded in the tab that fall under the given scope.
 async function getOriginsInScope(scope) {
@@ -108,25 +111,30 @@ document.getElementById('merge').addEventListener("click", () => applyServerPoli
 function importableSource(src) {
     if (!src)
         return null;
-    if (kNonceOrHashPrefix.test(src))
-        return null;
-    if (src === "'report-sample'")
-        return null;
-    if (src === "'strict-dynamic'")
+    if (kNonceOrHashPrefix.test(src) || src === "'strict-dynamic'")
         return "'unsafe-inline'";
     return src;
 }
 
 function applyServerSources() {
-    let columns = utils.getTableColProps(directivesTable, "id");
+    let srcs = utils.getTableRowProps(serverTable, "textContent");
+    let dirs = utils.getTableColProps(serverTable, "id");
 
-    for (let policy of currentServerPolicies) {
-        for (let [directive, sources] of Object.entries(policy.directives)) {
-            let dir = Policy.collapseDirective(directive);
+    // Drop the row-title column id.
+    dirs.shift();
 
-            if (columns.includes(dir)) {
-                sources.forEach(src => setSourceCheckboxState(importableSource(src), dir, true));
-            }
+    for (let src of srcs) {
+        let target = importableSource(src);
+        if (!target)
+            continue;
+        for (let dir of dirs) {
+            if (!getSourceCheckboxState(src, dir, serverTable.tBodies[0]))
+                continue;
+            let box = findCheckbox(target, dir, true);
+            if (!box)
+                continue;
+            box.checked = true;
+            enforceNoneLeader(box);
         }
     }
 
@@ -197,7 +205,8 @@ originList.addEventListener("click", (e) => {
 // column, checking anything else clears 'none'.
 function enforceNoneLeader(target) {
     let cell = target.closest("td");
-    let noneRow = utils.findTableRow(directivesTable, "'none'");
+    let table = target.closest("table");
+    let noneRow = utils.findTableRow(table, "'none'");
     let col;
     let noneBox;
     let group;
@@ -209,7 +218,7 @@ function enforceNoneLeader(target) {
 
     col = cell.cellIndex;
     noneBox = noneRow.cells[col].firstChild;
-    group = Array.from(directivesTable.tBodies[0].rows, r => r.cells[col].firstChild);
+    group = Array.from(table.tBodies[0].rows, r => r.cells[col].firstChild);
 
     if (target === noneBox)
         utils.checkboxMutex(group, noneBox);
@@ -220,6 +229,10 @@ function enforceNoneLeader(target) {
 directivesTable.addEventListener("change", (event) => {
     enforceNoneLeader(event.target);
     setCurrentRules(originList.value);
+});
+serverTable.addEventListener("change", (event) => {
+    enforceNoneLeader(event.target);
+    serverTable.dataset.dirty = "true";
 });
 sandboxTable.addEventListener("change", async (event) => {
     if (event.target.id === "sandbox-enabled")
@@ -551,7 +564,9 @@ async function populateOriginList(preferredDomain) {
 async function populateServerPolicy(container) {
     let tab = await sidepanel.getActiveTab();
     let headers;
-    let sources = new Set();
+    let serverFragment = document.createDocumentFragment();
+    let columns = utils.getTableColProps(directivesTable, "id");
+    let passthru = new Policy();
 
     headers = await chrome.runtime.sendMessage({
         command: MessageTypes.REQ_HEADERS,
@@ -561,22 +576,39 @@ async function populateServerPolicy(container) {
         }
     });
 
-    headerList.value = headers.join("\n") || "none";
-
     currentServerPolicies = headers.map(h => new Policy().fromHeader(h));
 
-    document.getElementById('accept').disabled = headers.length === 0;
-    document.getElementById('merge').disabled = headers.length === 0;
+    passthru.directives = Object.create(null);
 
-    // Surface per-page nonce-* / hash-* sources from the server CSP so the
-    // user can toggle them. Regex matches the CSP3 grammar exactly so we
-    // reject anything with garbage characters.
-    currentServerPolicies
-        .flatMap(p => Object.values(p.directives).flat())
-        .filter(src => kNonceOrHashFull.test(src))
-        .forEach(src => sources.add(src));
+    for (let policy of currentServerPolicies) {
+        for (let [directive, srcs] of Object.entries(policy.directives)) {
+            let dir = Policy.collapseDirective(directive);
 
-    sources.forEach(src => addSourceCheckboxRow(src, container));
+            if (columns.includes(dir)) {
+                for (let src of srcs) {
+                    if (!sidepanel.isValidSource(src)) {
+                        console.debug("report", `ignoring invalid or unsupported server source ${src}`);
+                        continue;
+                    }
+                    setSourceCheckboxState(src, dir, true, undefined, serverFragment);
+                    if (kNonceOrHashPrefix.test(src))
+                        addSourceCheckboxRow(src, container);
+                }
+            } else if (directive === "sandbox") {
+                passthru.directives[directive] ??= srcs;
+            } else if (Policy.isAllowedPassthruDirective(directive, options?.defaultscope)) {
+                passthru.directives[directive] ??= srcs;
+            }
+        }
+    }
+
+    // Don't clobber the table if the user is editing it when a new policy arrives.
+    if (!serverTable.dataset.dirty) {
+        serverTable.tBodies[0].replaceChildren(serverFragment);
+        utils.sortTable(serverTable, compareSourceRows);
+    }
+
+    headerList.textContent = passthru.toHeader().trim();
 }
 
 async function refreshViolations(domain) {
@@ -630,6 +662,7 @@ async function refreshTable(domain) {
     let fragment = buildDefaultDirectivesFragment();
 
     resetSandboxDirectives();
+    delete serverTable.dataset.dirty;
 
     await getCurrentRules(domain, fragment);
     await populateServerPolicy(fragment);

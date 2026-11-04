@@ -6,6 +6,42 @@
     <link rel="stylesheet" href="sidepanel.css">
 </head>
 <body>
+<template id="sources-template">
+    <colgroup>
+        <col class=col-src>
+        <col class=col-default-src>
+        <col class=col-script-src>
+        <col class=col-style-src>
+        <col class=col-img-src>
+        <col class=col-frame-src>
+        <col class=col-font-src>
+        <col class=col-media-src>
+        <col class=col-connect-src>
+        <col class=col-worker-src>
+        <col class="col-child-src advanced">
+        <col class="col-manifest-src advanced">
+        <col class="col-object-src advanced">
+    </colgroup>
+    <thead>
+        <tr>
+            <th id=src title="Source">Source</th>
+            <th id=default-src title="default-src">📌</th>
+            <th id=script-src title="script-src">📜</th>
+            <th id=style-src title="style-src">🦚</th>
+            <th id=img-src title="img-src">🖼️</th>
+            <th id=frame-src title="frame-src">🪟</th>
+            <th id=font-src title="font-src">🔤</th>
+            <th id=media-src title="media-src">📽️</th>
+            <th id=connect-src title="connect-src">🔌</th>
+            <th id=worker-src title="worker-src">🔧</th>
+            <th id=child-src class="advanced" title="child-src">👶</th>
+            <th id=manifest-src class="advanced" title="manifest-src">🪪</th>
+            <th id=object-src class="advanced" title="object-src">🧩</th>
+        </tr>
+    </thead>
+    <tbody>
+    </tbody>
+</template>
 <select id="panel"></select>
 <h1>Report</h1>
 <p class="subtitle">
@@ -33,40 +69,6 @@
             Source Directives
             <div id=frames></div>
         </caption>
-        <colgroup>
-            <col id=col-src>
-            <col id=col-default-src>
-            <col id=col-script-src>
-            <col id=col-style-src>
-            <col id=col-img-src>
-            <col id=col-frame-src>
-            <col id=col-font-src>
-            <col id=col-media-src>
-            <col id=col-connect-src>
-            <col id=col-worker-src>
-            <col id=col-child-src class="advanced">
-            <col id=col-manifest-src class="advanced">
-            <col id=col-object-src class="advanced">
-        </colgroup>
-        <thead>
-            <tr>
-                <th id=src title="Source">Source</th>
-                <th id=default-src title="default-src">📌</th>
-                <th id=script-src title="script-src">📜</th>
-                <th id=style-src title="style-src">🦚</th>
-                <th id=img-src title="img-src">🖼️</th>
-                <th id=frame-src title="frame-src">🪟</th>
-                <th id=font-src title="font-src">🔤</th>
-                <th id=media-src title="media-src">📽️</th>
-                <th id=connect-src title="connect-src">🔌</th>
-                <th id=worker-src title="worker-src">🔧</th>
-                <th id=child-src class="advanced" title="child-src">👶</th>
-                <th id=manifest-src class="advanced" title="manifest-src">🪪</th>
-                <th id=object-src class="advanced" title="object-src">🧩</th>
-            </tr>
-        </thead>
-        <tbody>
-        </tbody>
     </table>
 </div>
 <br>
@@ -141,19 +143,19 @@
     </table>
 </div>
 <div id="serverpolicy">
-<br>
-<hr>
-<div>
-<label for=servercsp>Server Suggested Policy</label>
-<textarea id=servercsp readonly>
-none
-</textarea>
-<div>
-    <button id="accept" disabled title="Replace sources with the suggested policy">Accept</button>
-    <button id="merge" disabled title="Add the suggested sources to the current selection">Merge</button>
-</div>
-</div>
-<br>
+    <br>
+    <hr>
+    <details>
+        <summary>Server Suggested Policy</summary>
+        <div>
+            <table id="serversources" class="sources"></table>
+        </div>
+        <textarea id=servercsp readonly></textarea>
+        <p>
+            <button id="accept" title="Replace sources with the suggested policy">Accept</button>
+            <button id="merge" title="Add the suggested sources to the current selection">Merge</button>
+        </p>
+    </details>
 </div>
 </body>
 </html>

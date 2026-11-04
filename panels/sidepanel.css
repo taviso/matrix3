@@ -183,13 +183,24 @@ div#trustcontrol:not(:has(option)) {
     display: none;
 }
 
-label[for="trustgroup"],
-label[for="servercsp"] {
+label[for="trustgroup"] {
     display: block;
     font-size: medium;
 }
 
-div#serverpolicy:has(button:disabled) {
+div#serverpolicy:not(:has(tbody tr, textarea:not(:empty))) {
+    display: none;
+}
+
+table#serversources:not(:has(tbody tr)) {
+    display: none;
+}
+
+textarea#servercsp {
+    margin-top: 0.5em;
+}
+
+textarea#servercsp:empty {
     display: none;
 }
 
@@ -295,11 +306,11 @@ details details {
     margin-left: 1em;
 }
 
-details table.sources tbody th {
+details details table.sources tbody th {
     text-align: left;
 }
 
-details table.sources input {
+details details table.sources input {
     pointer-events: none;
 }
 

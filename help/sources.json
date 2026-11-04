@@ -98,6 +98,11 @@
     {
       "name": "URL",
       "regex": "^(?:https?|wss?)://(\\*\\.)?[\\w-]+(\\.[\\w-]+)*(:(?:\\d+|\\*))?$",
+      "description": "Allows loading resources from this specific domain or host and scheme."
+    },
+    {
+      "name": "Host",
+      "regex": "^(\\*\\.)?[\\w-]+(\\.[\\w-]+)+(:(?:\\d+|\\*))?$",
       "description": "Allows loading resources from this specific domain or host."
     },
     {
