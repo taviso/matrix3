@@ -468,25 +468,14 @@ async function setCurrentRules(hostName)
 
     // Passthrough security-relevant directives the server set that we don't
     // manage in the UI (frame-ancestors, trusted-types, etc.).
-    let tab = await sidepanel.getActiveTab();
-    let headers = await chrome.runtime.sendMessage({
-        command: MessageTypes.REQ_HEADERS,
-           data: {
-                id: tab.id,
-            domain: hostName
-        }
-    });
-    let scope = options?.defaultscope;
-
-    for (let header of headers) {
-        let serverPolicy = new Policy().fromHeader(header);
+    for (let serverPolicy of currentServerPolicies) {
         for (let d in serverPolicy.directives) {
             // We can't allow all directives through for domain scope, or
             // they'll apply to every host on that domain. This is a
             // tradeoff, rules are far easier for users to manage by domain,
             // but you have to accept the rules that allow the weakest hosts to
             // work. It can be configured by users though, via the scope option.
-            if (!Policy.isAllowedPassthruDirective(d, scope)) {
+            if (!Policy.isAllowedPassthruDirective(d, options?.defaultscope)) {
                 console.debug("report", `dropped directive ${d} for ${hostName}, not allowed in scope`);
                 continue;
             }
