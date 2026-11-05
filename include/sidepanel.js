@@ -19,7 +19,7 @@ try {
         fetch(chrome.runtime.getURL('help/directives.json')).then(r => r.json()),
         fetch(chrome.runtime.getURL('help/sandbox.json')).then(r => r.json()),
     ]);
-    helpData.sources = srcs.sources;
+    helpData.sources = srcs.sources.map(h => ({ ...h, regex: new RegExp(h.regex) }));
     helpData.directives = dirs.directives;
     helpData.sandbox = sbx.sandbox;
 } catch (e) {
@@ -28,7 +28,7 @@ try {
 
 export function getRuleTooltip(source, directive)
 {
-    let sourceHelp = helpData.sources.find(h => new RegExp(h.regex).test(source));
+    let sourceHelp = helpData.sources.find(h => h.regex.test(source));
     let directiveHelp = helpData.directives[directive];
     let title = "";
 
@@ -42,7 +42,7 @@ export function getRuleTooltip(source, directive)
 
 export function isValidSource(source)
 {
-    return helpData.sources.some(h => new RegExp(h.regex).test(source));
+    return helpData.sources.some(h => h.regex.test(source));
 }
 
 const sidepanelPages = {
