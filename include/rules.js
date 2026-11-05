@@ -318,12 +318,12 @@ export default class Rules {
         else
             rule.id = this.#getNextId();
 
-        this.#setRule(rule);
-
         await this.#updateSessionRules({
             removeRuleIds: oldSession ? [oldSession.id] : [],
             addRules: [ rule.toRule() ],
         });
+
+        this.#setRule(rule);
     }
 
     // Delete the session rule for hostName (if any); any dynamic rule stays put.
@@ -561,12 +561,12 @@ export default class Rules {
         rule.action = { type: "allow" };
         rule.tabId = tabId;
 
-        this.#exempt.set(tabId, rule.id);
-
         await this.#updateSessionRules({
             removeRuleIds: [],
             addRules: [rule.toRule()],
         });
+
+        this.#exempt.set(tabId, rule.id);
     }
 
     async delTabExemption(tabId) {
@@ -574,12 +574,12 @@ export default class Rules {
         if (!id)
             return;
 
-        this.#exempt.delete(tabId);
-
         await this.#updateSessionRules({
             removeRuleIds: [id],
             addRules: [],
         });
+
+        this.#exempt.delete(tabId);
     }
 
     // Enable exactly the named static rulesets (plus required ones); disable
