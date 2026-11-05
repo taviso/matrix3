@@ -157,19 +157,19 @@ function applyServerPolicy() {
     setCurrentRules(originList.value);
 }
 
-function applyServerSandbox() {
-    let sbx = document.querySelector("input#sandbox-enabled");
+function enableSandbox(features) {
+    document.querySelector("input#sandbox-enabled").checked = true;
+    for (let id of features) {
+        let box = document.getElementById(id);
+        if (box?.classList.contains("allow"))
+            box.checked = true;
+    }
+}
 
+function applyServerSandbox() {
     for (let policy of currentServerPolicies) {
-        let features = policy.directives.sandbox;
-        if (!features)
-            continue;
-        sbx.checked = true;
-        for (let id of features) {
-            let box = document.getElementById(id);
-            if (box?.classList.contains("allow"))
-                box.checked = true;
-        }
+        if (policy.directives.sandbox)
+            enableSandbox(policy.directives.sandbox);
     }
 }
 
@@ -320,20 +320,16 @@ function findCheckbox(source, directive, autoAdd, container = directivesTable.tB
     let row = Array.from(container.children).find(r => r.cells[0]?.textContent === source);
     let colNum = cols.indexOf(directive);
 
+    if (colNum == -1) {
+        console.debug("report", `column for directive ${directive} does not exist`);
+        return null;
+    }
     if (!row && autoAdd) {
         console.debug("report", `source name ${source} is unknown, adding`);
         row = addSourceCheckboxRow(source, container);
     }
-    if (!row || colNum == -1) {
-        // This could be something we just passthru
-        if (!Policy.isAllowedPassthruDirective(directive, options?.defaultscope)) {
-            // Nope, might be report-to or similar (safe to ignore).
-            console.debug("report", `checkbox for ${directive} ${source} does not exist`);
-        }
-        return null;
-    }
 
-    return row.cells[colNum].firstChild;
+    return row?.cells[colNum].firstChild ?? null;
 }
 
 function setSourceCheckboxState(source, directive, state, className, container = directivesTable.tBodies[0])
@@ -400,6 +396,7 @@ function compareSourceRows(a, b) {
 async function getCurrentRules(hostName, container)
 {
     let rule = RulesManager.getHostRule(hostName);
+    let columns = utils.getTableColProps(directivesTable, "id");
     let policy;
     let className;
 
@@ -417,23 +414,13 @@ async function getCurrentRules(hostName, container)
         let sources = policy.directives[directive];
 
         if (directive == "sandbox") {
-            let sbx = document.querySelector("input#sandbox-enabled");
-            let features = Array.from(document.querySelectorAll("td input.sandbox"));
-
-            sbx.checked = true;
-            for (let id of sources) {
-                let box = features.find(f => f.id == id);
-                box.checked = true;
-            }
+            enableSandbox(sources);
             continue;
         }
 
-        if (directive == "report-uri" || directive == "base-uri")
-            continue;
-
         let dir = Policy.collapseDirective(directive);
-        for (let src of sources)
-            setSourceCheckboxState(src, dir, true, className, container);
+        if (columns.includes(dir))
+            sources.forEach(src => setSourceCheckboxState(src, dir, true, className, container));
     }
 }
 
