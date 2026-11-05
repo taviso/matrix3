@@ -8,49 +8,51 @@ const dynamicTbl = document.getElementById('dynamic');
 const sessionTbl = document.getElementById('session');
 const staticTbl = document.getElementById('static');
 
-async function updateRuleTables() {
-    let rules = RulesManager.getRules();
-    let base  = RulesManager.getAllStaticRules();
+function updateRuleTables() {
+    return utils.callWithLock("rules", async () => {
+        let rules = RulesManager.getRules();
+        let base  = RulesManager.getAllStaticRules();
 
-    utils.clearTable(dynamicTbl);
-    utils.clearTable(sessionTbl);
+        utils.clearTable(dynamicTbl);
+        utils.clearTable(sessionTbl);
 
-    for (let rule of rules) {
-        let tbl = rule.isSession ? sessionTbl : dynamicTbl;
-        let row = tbl.insertRow(-1);
-        let chk = document.createElement("input");
-        let pol = rule.policy;
+        for (let rule of rules) {
+            let tbl = rule.isSession ? sessionTbl : dynamicTbl;
+            let row = tbl.insertRow(-1);
+            let chk = document.createElement("input");
+            let pol = rule.policy;
 
-        delete pol.directives["report-uri"];
+            delete pol.directives["report-uri"];
 
-        chk.type = "checkbox";
-        chk.checked = false;
-        chk.className = "rule";
-        chk.dataset.id = rule.id;
-        row.insertCell(-1).appendChild(chk);
-        row.insertCell(-1).innerText = rule.host;
-        let cell = row.insertCell(-1);
-        cell.innerText = pol.toHeader();
-        cell.title = cell.innerText;
-    }
+            chk.type = "checkbox";
+            chk.checked = false;
+            chk.className = "rule";
+            chk.dataset.id = rule.id;
+            row.insertCell(-1).appendChild(chk);
+            row.insertCell(-1).innerText = rule.host;
+            let cell = row.insertCell(-1);
+            cell.innerText = pol.toHeader();
+            cell.title = cell.innerText;
+        }
 
-    utils.clearTable(staticTbl);
+        utils.clearTable(staticTbl);
 
-    for (let ruleset of base) {
-        let row = staticTbl.insertRow(-1);
-        let chk = document.createElement("input");
-        chk.type = "checkbox";
-        chk.checked = await ruleset.isEnabled();
-        chk.disabled = true;
-        chk.className = "rule";
-        chk.title = "Adjust Rulesets in Options...";
-        row.insertCell(-1).appendChild(chk);
-        row.insertCell(-1).innerText = ruleset.id;
-    }
+        for (let ruleset of base) {
+            let row = staticTbl.insertRow(-1);
+            let chk = document.createElement("input");
+            chk.type = "checkbox";
+            chk.checked = await ruleset.isEnabled();
+            chk.disabled = true;
+            chk.className = "rule";
+            chk.title = "Adjust Rulesets in Options...";
+            row.insertCell(-1).appendChild(chk);
+            row.insertCell(-1).innerText = ruleset.id;
+        }
 
-    applyFilter();
-    document.getElementById('reset').disabled = rules.length === 0;
-    document.getElementById('commit').disabled = !rules.some(r => r.isSession);
+        applyFilter();
+        document.getElementById('reset').disabled = rules.length === 0;
+        document.getElementById('commit').disabled = !rules.some(r => r.isSession);
+    });
 }
 
 function applyFilter() {

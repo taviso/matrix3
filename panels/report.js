@@ -205,10 +205,12 @@ document.getElementById('applygroup').addEventListener("click", () => applyTrust
 originList.addEventListener("click", (e) => {
     let btn = e.target.closest("button");
     if (!btn) return;
-    originList.value = btn.dataset.value;
-    userOrigin = originList.value;
-    refreshTable(originList.value);
-    updateOriginScopeState();
+    userOrigin = btn.dataset.value;
+    utils.callWithLock("report", async () => {
+        originList.value = userOrigin;
+        await refreshTable(originList.value);
+        updateOriginScopeState();
+    });
 });
 
 // 'none' must be alone in a CSP source list: checking 'none' clears the
@@ -692,15 +694,17 @@ function populateTrustGroups() {
         select.value = prev;
 }
 
-async function updateReport() {
-    let tab = await sidepanel.getActiveTab();
-    await populateOriginList(userOrigin);
-    await refreshTable(originList.value);
-    populateTrustGroups();
-    updateOriginScopeState();
+function updateReport() {
+    return utils.callWithLock("report", async () => {
+        let tab = await sidepanel.getActiveTab();
+        await populateOriginList(userOrigin);
+        await refreshTable(originList.value);
+        populateTrustGroups();
+        updateOriginScopeState();
 
-    // If the user has opened the report, clear any icon badge.
-    if (tab) chrome.action.setBadgeText({ text: '', tabId: tab.id }).catch(() => {});
+        // If the user has opened the report, clear any icon badge.
+        if (tab) chrome.action.setBadgeText({ text: '', tabId: tab.id }).catch(() => {});
+    });
 }
 
 chrome.webNavigation.onCommitted.addListener(async (details) => {
@@ -738,11 +742,11 @@ async function handleNotifyUpdate(msg) {
 chrome.runtime.onMessage.addListener((msg) => {
     switch (msg.command) {
         case MessageTypes.NOTIFY_UPDATE:
-            handleNotifyUpdate(msg);
+            utils.callWithLock("report", () => handleNotifyUpdate(msg));
             break;
         case MessageTypes.NOTIFY_RULES:
             // Another window mutated dNR rules; our mirror is stale.
-            RulesManager.init().then(() => refreshTable(originList.value));
+            RulesManager.init().then(() => utils.callWithLock("report", () => refreshTable(originList.value)));
             break;
     }
 });

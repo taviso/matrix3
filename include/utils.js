@@ -73,3 +73,11 @@ export function formatSource(source) {
     }
     return frag;
 }
+
+// Serialize async work under a named Web Lock when available.
+export function callWithLock(name, fn) {
+    if (navigator.locks)
+        return navigator.locks.request(name, fn);
+    console.debug("utils", `web locks API not available, skipping lock ${name}`);
+    return fn();
+}
