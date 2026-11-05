@@ -530,6 +530,7 @@ async function setCurrentRules(hostName)
         policy.directives.sandbox = features;
 
     await RulesManager.addSessionRule(hostName, policy);
+    await populateServerPolicy();
     await updateButtonStates();
 }
 
@@ -537,9 +538,9 @@ async function populateOriginList(preferredDomain) {
     let tab = await sidepanel.getActiveTab();
     let frames = (await chrome.webNavigation.getAllFrames({tabId: tab.id}).catch(() => []) ?? [])
                      .filter(f => f.documentLifecycle === "active");
-
     let domains = new Map();
     let topDomain;
+
     for (let f of frames) {
         let u = new URL(f.url);
         if (u.origin == "null")
@@ -573,6 +574,8 @@ async function populateOriginList(preferredDomain) {
 
 async function populateServerPolicy(container) {
     let tab = await sidepanel.getActiveTab();
+    let active = RulesManager.getHostRule(originList.value)?.policy
+              ?? await RulesManager.getDefaultPolicy();
     let headers;
     let serverFragment = document.createDocumentFragment();
     let columns = utils.getTableColProps(directivesTable, "id");
@@ -604,13 +607,15 @@ async function populateServerPolicy(container) {
                     if (kNonceOrHashPrefix.test(src))
                         addSourceCheckboxRow(src, container);
                 }
-            } else if (directive === "sandbox") {
-                passthru.directives[directive] ??= srcs;
-            } else if (Policy.isAllowedPassthruDirective(directive, options?.defaultscope)) {
+            } else if (!(directive in active.directives)) {
                 passthru.directives[directive] ??= srcs;
             }
         }
     }
+
+    // Hide any directives we will never allow.
+    delete passthru.directives["report-to"];
+    delete passthru.directives["report-uri"];
 
     // Don't clobber the table if the user is editing it when a new policy arrives.
     if (!serverTable.dataset.dirty) {
