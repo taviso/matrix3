@@ -7,9 +7,10 @@ import Options from '/include/options.js'
 // Returns the registrable domain for `host`, e.g. "mail.google.com" ->
 // "google.com". Returns `host` unchanged for IPs, single-label hostnames,
 // or unparseable input.
-export function getRegistrableDomain(host)
+export async function getRegistrableDomain(host)
 {
-    return getDomain(host) ?? host;
+    let options = await Options.get();
+    return getDomain(host, { allowPrivateDomains: !!options?.privatedomains }) ?? host;
 }
 
 // Resolves `host` to the scope the user picked in Options. "domain" is the

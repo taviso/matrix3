@@ -8,6 +8,7 @@ const kDefaultOptions = {
     confirmactions: false,
     unregistersw: true,
     defaultscope: "domain",
+    privatedomains: false,
 };
 
 // Each entry at key `v` migrates an options object in place from `v` to `v + 1`.
