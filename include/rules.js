@@ -291,43 +291,32 @@ export default class Rules {
         return ruleset.toPolicy();
     }
 
-    // Empty template rule seeded with the active default ruleset's policy.
-    async getEmptyRule(hostName) {
-        let rule = new Rule();
-        let policy = await this.getDefaultPolicy();
-
-        rule.id = this.#getNextId();
-        rule.priority = kDynamicPriority;
-        rule.fromPolicy(policy);
-        if (hostName) {
-            rule.host = hostName;
-        }
-        return rule;
-    }
-
     // Install rulePolicy as a session rule for hostName, replacing any prior
     // session. Any existing dynamic stays put; the session's priority is
     // bumped above it so the session wins at runtime, and Abandon can then
     // delete the session to restore the dynamic.
     async addSessionRule(hostName, rulePolicy) {
-        let rule = await this.getEmptyRule(hostName);
+        let rule = new Rule(null, true);
         let oldSession = this.#findSessionForHost(hostName);
         let oldDynamic = this.#findDynamicForHost(hostName);
 
         // Point report-uri at our extension's WAR to avoid ERR_BLOCKED_BY_CLIENT errors.
         rulePolicy.directives["report-uri"] = [chrome.runtime.getURL("csp-report")];
 
+        rule.host = hostName;
+        rule.priority = kDynamicPriority;
         rule.fromPolicy(rulePolicy);
-        rule.isSession = true;
 
         // The new session rule should take priority over any old dynamic rule, the
         // user can test it and then commit it.
         if (oldDynamic)
             rule.priority = oldDynamic.priority + 1;
 
-        // The new session rule replaces any old session rule.
+        // Reuse the old session rule's ID so toggling checkboxes updates it in place.
         if (oldSession)
-            this.#deleteRule(oldSession);
+            rule.id = oldSession.id;
+        else
+            rule.id = this.#getNextId();
 
         this.#setRule(rule);
 
