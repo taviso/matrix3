@@ -450,11 +450,13 @@ function setCurrentViolations(data, container)
 function setCurrentRules(hostName)
 {
     let row = directivesTable.tBodies[0].rows[0];
+    let tab = sidepanel.getActiveTab();
 
     return utils.callWithLock("report", async () => {
         if (!row?.isConnected || hostName !== originList.value)
             return;
 
+        tab = await tab;
         let srcs = utils.getTableRowProps(directivesTable, "textContent");
         let dirs = utils.getTableColProps(directivesTable, "id");
         let policy = await RulesManager.getDefaultPolicy();
@@ -513,8 +515,6 @@ function setCurrentRules(hostName)
         delete policy.directives.sandbox;
         if (sbx.checked)
             policy.directives.sandbox = features;
-
-        let tab = await sidepanel.getActiveTab();
 
         await RulesManager.addSessionRule(hostName, policy);
         await populateServerPolicy(undefined, tab);
