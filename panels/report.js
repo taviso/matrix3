@@ -247,9 +247,10 @@ serverTable.addEventListener("change", (event) => {
     serverTable.dataset.dirty = "true";
 });
 sandboxTable.addEventListener("change", async (event) => {
+    let host = originList.value;
     if (event.target.id === "sandbox-enabled")
         await fallbackToFirstParty();
-    setCurrentRules(originList.value);
+    setCurrentRules(host);
 });
 
 function resetSandboxDirectives()
@@ -446,70 +447,77 @@ function setCurrentViolations(data, container)
     }
 }
 
-async function setCurrentRules(hostName)
+function setCurrentRules(hostName)
 {
-    let srcs = utils.getTableRowProps(directivesTable, "textContent");
-    let dirs = utils.getTableColProps(directivesTable, "id");
-    let policy = await RulesManager.getDefaultPolicy();
+    let row = directivesTable.tBodies[0].rows[0];
 
-    // Drop the row-title column id.
-    dirs.shift();
+    return utils.callWithLock("report", async () => {
+        if (!row?.isConnected || hostName !== originList.value)
+            return;
 
-    // Passthrough security-relevant directives the server set that we don't
-    // manage in the UI (frame-ancestors, trusted-types, etc.).
-    for (let serverPolicy of currentServerPolicies) {
-        for (let d in serverPolicy.directives) {
-            // We can't allow all directives through for domain scope, or
-            // they'll apply to every host on that domain. This is a
-            // tradeoff, rules are far easier for users to manage by domain,
-            // but you have to accept the rules that allow the weakest hosts to
-            // work. It can be configured by users though, via the scope option.
-            if (!Policy.isAllowedPassthruDirective(d, options?.defaultscope)) {
-                console.debug("report", `dropped directive ${d} for ${hostName}, not allowed in scope`);
+        let srcs = utils.getTableRowProps(directivesTable, "textContent");
+        let dirs = utils.getTableColProps(directivesTable, "id");
+        let policy = await RulesManager.getDefaultPolicy();
+
+        // Drop the row-title column id.
+        dirs.shift();
+
+        // Passthrough security-relevant directives the server set that we don't
+        // manage in the UI (frame-ancestors, trusted-types, etc.).
+        for (let serverPolicy of currentServerPolicies) {
+            for (let d in serverPolicy.directives) {
+                // We can't allow all directives through for domain scope, or
+                // they'll apply to every host on that domain. This is a
+                // tradeoff, rules are far easier for users to manage by domain,
+                // but you have to accept the rules that allow the weakest hosts to
+                // work. It can be configured by users though, via the scope option.
+                if (!Policy.isAllowedPassthruDirective(d, options?.defaultscope)) {
+                    console.debug("report", `dropped directive ${d} for ${hostName}, not allowed in scope`);
+                    continue;
+                }
+                if (policy.directives[d]) {
+                    console.log("report", `duplicate directive ${d} dropped for ${hostName}`);
+                    continue;
+                }
+                policy.directives[d] = serverPolicy.directives[d];
+            }
+        }
+
+        // Reset before write.
+        dirs.forEach(dir => delete policy.directives[dir]);
+
+        for (let dir of dirs) {
+            let activeSources = srcs.filter(src => getSourceCheckboxState(src, dir));
+
+            if (activeSources.length === 0)
+                continue;
+
+            if (activeSources.includes("'none'")) {
+                policy.directives[dir] = ["'none'"];
                 continue;
             }
-            if (policy.directives[d]) {
-                console.log("report", `duplicate directive ${d} dropped for ${hostName}`);
-                continue;
-            }
-            policy.directives[d] = serverPolicy.directives[d];
-        }
-    }
 
-    // Reset before write.
-    dirs.forEach(dir => delete policy.directives[dir]);
-
-    for (let dir of dirs) {
-        let activeSources = srcs.filter(src => getSourceCheckboxState(src, dir));
-
-        if (activeSources.length === 0)
-            continue;
-
-        if (activeSources.includes("'none'")) {
-            policy.directives[dir] = ["'none'"];
-            continue;
-        }
-
-        policy.directives[dir] ??= [];
-        for (let src of activeSources) {
-            if (!policy.directives[dir].includes(src)) {
-                policy.directives[dir].push(src);
+            policy.directives[dir] ??= [];
+            for (let src of activeSources) {
+                if (!policy.directives[dir].includes(src)) {
+                    policy.directives[dir].push(src);
+                }
             }
         }
-    }
 
-    // Sandbox policies.
-    let sbx = document.querySelector("input#sandbox-enabled");
-    let features = Array.from(document.querySelectorAll("td input.sandbox.allow:checked"), f => f.id);
+        // Sandbox policies.
+        let sbx = document.querySelector("input#sandbox-enabled");
+        let features = Array.from(document.querySelectorAll("td input.sandbox.allow:checked"), f => f.id);
 
-    // Reset before write -- see NOTES.md "Inherited directives in setCurrentRules".
-    delete policy.directives.sandbox;
-    if (sbx.checked)
-        policy.directives.sandbox = features;
+        // Reset before write -- see NOTES.md "Inherited directives in setCurrentRules".
+        delete policy.directives.sandbox;
+        if (sbx.checked)
+            policy.directives.sandbox = features;
 
-    await RulesManager.addSessionRule(hostName, policy);
-    await populateServerPolicy();
-    await updateButtonStates();
+        await RulesManager.addSessionRule(hostName, policy);
+        await populateServerPolicy();
+        await updateButtonStates();
+    });
 }
 
 async function populateOriginList(preferredDomain, tab) {
