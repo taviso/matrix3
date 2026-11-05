@@ -574,6 +574,9 @@ async function populateServerPolicy(container) {
             let dir = Policy.collapseDirective(directive);
 
             if (columns.includes(dir)) {
+                // Per the CSP spec, an empty source list is equivalent to 'none'.
+                if (srcs.length === 0)
+                    srcs = ["'none'"];
                 for (let src of srcs) {
                     if (!sidepanel.isValidSource(src)) {
                         console.debug("report", `ignoring invalid or unsupported server source ${src}`);
