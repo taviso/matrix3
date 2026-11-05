@@ -512,8 +512,8 @@ async function setCurrentRules(hostName)
     await updateButtonStates();
 }
 
-async function populateOriginList(preferredDomain) {
-    let tab = await sidepanel.getActiveTab();
+async function populateOriginList(preferredDomain, tab) {
+    tab ??= await sidepanel.getActiveTab();
     let frames = (await chrome.webNavigation.getAllFrames({tabId: tab.id}).catch(() => []) ?? [])
                      .filter(f => f.documentLifecycle === "active");
     let domains = new Map();
@@ -550,8 +550,8 @@ async function populateOriginList(preferredDomain) {
     originList.value = target;
 }
 
-async function populateServerPolicy(container) {
-    let tab = await sidepanel.getActiveTab();
+async function populateServerPolicy(container, tab) {
+    tab ??= await sidepanel.getActiveTab();
     let active = RulesManager.getHostRule(originList.value)?.policy
               ?? await RulesManager.getDefaultPolicy();
     let headers;
@@ -607,8 +607,8 @@ async function populateServerPolicy(container) {
     headerList.textContent = passthru.toHeader().trim();
 }
 
-async function refreshViolations(domain) {
-    let tab = await sidepanel.getActiveTab();
+async function refreshViolations(domain, tab) {
+    tab ??= await sidepanel.getActiveTab();
 
     if (!domain || !tab) {
         // This can happen with multiple windows or devtools.
@@ -643,8 +643,8 @@ function updateOriginScopeState() {
 // Commit and Abandon only make sense when there's a session rule for the
 // host -- otherwise there's nothing to promote or discard. Uncommit is the
 // inverse: a dynamic rule with no session draft in the way.
-async function updateButtonStates() {
-    let tab = await sidepanel.getActiveTab();
+async function updateButtonStates(tab) {
+    tab ??= await sidepanel.getActiveTab();
     let host = originList.value;
     let rules = RulesManager.getRules().filter(r => r.host === host);
     let hasSession = rules.some(r => r.isSession);
@@ -656,15 +656,17 @@ async function updateButtonStates() {
     document.getElementById('resume').disabled = !RulesManager.isTabExempt(tab?.id);
 }
 
-async function refreshTable(domain) {
+async function refreshTable(domain, tab) {
     let fragment = buildDefaultDirectivesFragment();
+
+    tab ??= await sidepanel.getActiveTab();
 
     resetSandboxDirectives();
     delete serverTable.dataset.dirty;
 
     await getCurrentRules(domain, fragment);
-    await populateServerPolicy(fragment);
-    setCurrentViolations(await refreshViolations(domain), fragment);
+    await populateServerPolicy(fragment, tab);
+    setCurrentViolations(await refreshViolations(domain, tab), fragment);
 
     // Sort the fragment children before appending
     let rows = Array.from(fragment.children);
@@ -675,7 +677,7 @@ async function refreshTable(domain) {
     // Atomic swap
     directivesTable.tBodies[0].replaceChildren(fragment);
 
-    await updateButtonStates();
+    await updateButtonStates(tab);
 }
 
 function populateTrustGroups() {
@@ -697,8 +699,8 @@ function populateTrustGroups() {
 function updateReport() {
     return utils.callWithLock("report", async () => {
         let tab = await sidepanel.getActiveTab();
-        await populateOriginList(userOrigin);
-        await refreshTable(originList.value);
+        await populateOriginList(userOrigin, tab);
+        await refreshTable(originList.value, tab);
         populateTrustGroups();
         updateOriginScopeState();
 
@@ -734,8 +736,8 @@ async function handleNotifyUpdate(msg) {
     if (msg.data?.id !== tab?.id)
         return;
 
-    setCurrentViolations(await refreshViolations(originList.value));
-    await populateServerPolicy();
+    setCurrentViolations(await refreshViolations(originList.value, tab));
+    await populateServerPolicy(undefined, tab);
     utils.sortTable(directivesTable, compareSourceRows);
 }
 
