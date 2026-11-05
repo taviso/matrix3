@@ -514,9 +514,11 @@ function setCurrentRules(hostName)
         if (sbx.checked)
             policy.directives.sandbox = features;
 
+        let tab = await sidepanel.getActiveTab();
+
         await RulesManager.addSessionRule(hostName, policy);
-        await populateServerPolicy();
-        await updateButtonStates();
+        await populateServerPolicy(undefined, tab);
+        await updateButtonStates(tab);
     });
 }
 
