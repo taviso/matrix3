@@ -572,10 +572,10 @@ async function populateServerPolicy(container, tab) {
     headers = await chrome.runtime.sendMessage({
         command: MessageTypes.REQ_HEADERS,
            data: {
-                id: tab.id,
+                id: tab?.id,
             domain: originList.value
         }
-    });
+    }).catch(() => []);
 
     currentServerPolicies = headers.map(h => new Policy().fromHeader(h));
 
@@ -632,7 +632,7 @@ async function refreshViolations(domain, tab) {
                 id: tab.id,
             domain: domain
         }
-    });
+    }).catch(() => null);
 
     return violations;
 }
