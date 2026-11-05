@@ -137,6 +137,8 @@ export default class ViolationTracker {
             let hostpart = scoped;
             if (u.hostname != scoped)
                 hostpart = `*.${scoped}`;
+            if (u.port)
+                hostpart += `:${u.port}`;
             blocked = `${u.protocol}//${hostpart}`;
         }
 
