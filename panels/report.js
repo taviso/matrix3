@@ -756,7 +756,10 @@ chrome.runtime.onMessage.addListener((msg) => {
             break;
         case MessageTypes.NOTIFY_RULES:
             // Another window mutated dNR rules; our mirror is stale.
-            RulesManager.init().then(() => utils.callWithLock("report", () => refreshTable(originList.value)));
+            utils.callWithLock("report", async () => {
+                await RulesManager.init();
+                await refreshTable(originList.value);
+            });
             break;
     }
 });

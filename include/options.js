@@ -91,10 +91,11 @@ export default class Options {
     }
 
     static #load() {
-        Options.#promise ??= Promise.all([
-            chrome.storage.sync.get("options"),
-            chrome.storage.local.get("groups"),
-        ]).then(async ([{ options }, { groups }]) => {
+        Options.#promise ??= (async () => {
+            let [{ options }, { groups }] = await Promise.all([
+                chrome.storage.sync.get("options"),
+                chrome.storage.local.get("groups"),
+            ]);
             if (options)
                 options.version ??= 1;
 
@@ -104,7 +105,7 @@ export default class Options {
             Options.#cache = Object.assign({}, kDefaultOptions, options);
             if (Options.migrate(Options.#cache))
                 await Options.#saveInternal(true).catch(console.warn);
-        });
+        })();
         return Options.#promise;
     }
 

@@ -5,7 +5,8 @@
   "description": "A Minimal Content Security Policy Manager",
   "icons": {
       "32": "matrix3_32.png",
-      "64": "matrix3_64.png"
+      "64": "matrix3_64.png",
+      "128": "matrix3_128.png"
   },
   "background": {
     "service_worker": "service-worker.js",
