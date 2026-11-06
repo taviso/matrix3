@@ -55,7 +55,7 @@ const sidepanelPages = {
      "About": "/panels/about.html",
 };
 
-Options.addUpdateListener(() => applyOptions());
+Options.addUpdateListener(applyOptions);
 
 for (let page in sidepanelPages) {
     let opt = document.createElement("option");

@@ -115,7 +115,7 @@ document.getElementById('accept').addEventListener("click", () => {
     applyServerPolicy();
 });
 
-document.getElementById('merge').addEventListener("click", () => applyServerPolicy());
+document.getElementById('merge').addEventListener("click", applyServerPolicy);
 
 // Transform a server-supplied source for import. Returns null to skip.
 function importableSource(src) {
@@ -200,7 +200,7 @@ function applyTrustGroup() {
     setCurrentRules(originList.value);
 }
 
-document.getElementById('applygroup').addEventListener("click", () => applyTrustGroup());
+document.getElementById('applygroup').addEventListener("click", applyTrustGroup);
 
 originList.addEventListener("click", (e) => {
     let btn = e.target.closest("button");
@@ -763,5 +763,5 @@ chrome.runtime.onMessage.addListener((msg) => {
     }
 });
 
-Options.addUpdateListener(() => updateReport());
+Options.addUpdateListener(updateReport);
 updateReport();

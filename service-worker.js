@@ -22,9 +22,9 @@ async function applyStoredOptions() {
     await rules.applyDefaultPolicy(options.defaultpolicy);
 }
 
-chrome.runtime.onStartup.addListener(() => applyStoredOptions());
-chrome.runtime.onInstalled.addListener(() => applyStoredOptions());
-chrome.storage.onChanged.addListener(() => applyStoredOptions());
+chrome.runtime.onStartup.addListener(applyStoredOptions);
+chrome.runtime.onInstalled.addListener(applyStoredOptions);
+chrome.storage.onChanged.addListener(applyStoredOptions);
 
 // Set a badge on the toolbar icon for the given tab. Skipped when the
 // `badges` option is off so users can opt out of the visual clutter or
@@ -115,7 +115,7 @@ chrome.webNavigation.onCommitted.addListener((details) => {
 });
 
 // Make the matrix button open the sidepanel.
-chrome.sidePanel.setPanelBehavior({openPanelOnActionClick: true }).catch((error) => console.error(error));
+chrome.sidePanel.setPanelBehavior({openPanelOnActionClick: true }).catch(console.error);
 
 // Reset before the request so the CSP captured by onHeadersReceived survives.
 chrome.webNavigation.onBeforeNavigate.addListener((details) => {

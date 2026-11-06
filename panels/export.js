@@ -101,7 +101,7 @@ loadElement.addEventListener("click", async () => {
     await refreshExport();
 });
 
-Options.addUpdateListener(() => refreshExport());
+Options.addUpdateListener(refreshExport);
 
 await refreshExport();
 await refreshLastPush();

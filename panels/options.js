@@ -39,5 +39,5 @@ function updateOptions() {
 optionElements.forEach(el => el.addEventListener("change", syncOptionChanges));
 policyRange.addEventListener("input", updatePolicyTitle);
 
-Options.addUpdateListener(() => updateOptions());
+Options.addUpdateListener(updateOptions);
 updateOptions();

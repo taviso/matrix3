@@ -165,7 +165,7 @@ async function removeOrigin(group, origin) {
     updateGroupsDisplay();
 }
 
-document.getElementById('addgroup').addEventListener('click', () => addGroup());
+document.getElementById('addgroup').addEventListener('click', addGroup);
 newnameInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter')
         addGroup();
