@@ -1,6 +1,7 @@
 import * as utils from '/include/utils.js'
 import * as sidepanel from '/include/sidepanel.js'
 import Options from '/include/options.js'
+import { MessageTypes } from '/include/commands.js'
 
 const RulesManager = sidepanel.RulesManager;
 const outputElement = document.getElementById("export");
@@ -9,6 +10,7 @@ const downloadElement = document.getElementById("download");
 const pushElement = document.getElementById("push");
 const pullElement = document.getElementById("pull");
 const options = await Options.get();
+const groups = await Options.getGroups();
 
 async function refreshLastPush() {
     let time = await RulesManager.getCloudTime();
@@ -30,6 +32,7 @@ async function buildExport() {
         session: rules.filter(r => r.isSession).map(r => r.toRule()),
         dynamic: rules.filter(r => !r.isSession).map(r => r.toRule()),
         options,
+        groups,
         enabledRulesets: await chrome.declarativeNetRequest.getEnabledRulesets(),
     };
 }
@@ -52,7 +55,7 @@ pushElement.addEventListener("click", async () => {
     if (!await utils.confirmAction("Push dynamic rules into cloud storage?"))
         return;
     try {
-        let count = await RulesManager.pushToCloud();
+        let count = await utils.callWithLock("cloud", () => RulesManager.pushToCloud());
         console.log(`Successfully pushed ${count} dynamic rules to cloud.`);
     } catch (e) {
         alert("Push failed: " + e.message);
@@ -64,9 +67,14 @@ pushElement.addEventListener("click", async () => {
 pullElement.addEventListener("click", async () => {
     if (!await utils.confirmAction("Pull dynamic rules from cloud storage?"))
         return;
-    let count = await RulesManager.pullFromCloud();
-    console.log(`Successfully pulled ${count} dynamic rules from cloud.`);
-    await refreshExport();
+    try {
+        let count = await utils.callWithLock("cloud", () => RulesManager.pullFromCloud());
+        console.log(`Successfully pulled ${count} dynamic rules from cloud.`);
+    } catch (e) {
+        alert("Pull failed: " + e.message);
+    } finally {
+        await refreshExport();
+    }
 });
 
 loadElement.addEventListener("click", async () => {
@@ -83,8 +91,15 @@ loadElement.addEventListener("click", async () => {
 
     await RulesManager.replaceAllRules(blob.session ?? [], blob.dynamic ?? []);
 
+    if (blob.groups) {
+        for (let [name, group] of Object.entries(blob.groups))
+            groups[name] = Object.assign(groups[name] ?? {}, group);
+        await Options.saveGroups();
+    }
+
     if (blob.options) {
-        Options.migrate(blob.options);
+        if (Options.migrate(blob.options))
+            await Options.saveGroups();
         Object.assign(options, blob.options);
         await Options.save();
     }
@@ -99,6 +114,11 @@ loadElement.addEventListener("click", async () => {
     // applyOptions re-applies the defaultpolicy ruleset and the advanced class.
     await sidepanel.applyOptions();
     await refreshExport();
+});
+
+chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.command === MessageTypes.NOTIFY_RULES)
+        RulesManager.init().then(refreshExport);
 });
 
 Options.addUpdateListener(refreshExport);

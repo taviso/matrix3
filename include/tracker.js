@@ -136,7 +136,7 @@ export default class ViolationTracker {
         // Bucket by the document's scope so the panel can find it with the
         // same key it puts in the dropdown.
         let domain = await psl.getScopedDomain(docUrl.hostname);
-        let options = await Options.get();
+        let groups = await Options.getGroups();
 
         // Drop if the tab or its violations were reset while we were awaiting.
         if (this.#tabs.get(tabId) !== tab || tab.policy !== policy)
@@ -149,7 +149,7 @@ export default class ViolationTracker {
 
         // Caller uses our return value to decide whether to badge and notify;
         // ignored origins are recorded silently.
-        let ignored = options?.groups?.Ignore?.[blocked];
+        let ignored = groups?.Ignore?.[blocked];
         let dir = Policy.collapseDirective(report.directive);
         if (ignored?.includes(`!${dir}`))
             return true;

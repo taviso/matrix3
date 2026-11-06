@@ -5,10 +5,7 @@ import Options from '/include/options.js'
 const groupsContainer = document.getElementById('groups');
 const newnameInput = document.getElementById('newname');
 const groupTemplate = document.getElementById('group-template');
-const options = await Options.get();
-
-options.groups ??= {};
-options.groups.Ignore ??= {};
+const groups = await Options.getGroups();
 
 function updateBoxTooltip(box, groupName, source, directive) {
     let base = sidepanel.getRuleTooltip(source, directive);
@@ -63,7 +60,7 @@ function addSourceRow(table, groupName, source, directives) {
 function updateGroupsDisplay() {
     groupsContainer.replaceChildren();
 
-    for (let [name, origins] of Object.entries(options.groups)) {
+    for (let [name, origins] of Object.entries(groups)) {
         let g = groupTemplate.content.cloneNode(true).firstElementChild;
         let table = g.querySelector('table.sources');
         let input = g.querySelector('.neworigin');
@@ -92,7 +89,9 @@ function updateGroupsDisplay() {
                 return;
             let origin = row.dataset.origin;
             let dir = cols[box.closest('td').cellIndex];
-            let prev = options.groups[name][origin];
+            let prev = groups[name]?.[origin];
+            if (!prev)
+                return;
 
             // Cycle: unchecked -> checked -> indeterminate -> unchecked.
             if (prev.includes(dir)) {
@@ -104,15 +103,12 @@ function updateGroupsDisplay() {
 
             updateBoxTooltip(box, name, origin, dir);
 
-            options.groups[name][origin] = cols.slice(1).flatMap((col, i) => {
-                let input = row.cells[i + 1].firstChild;
-                if (input.checked)
-                    return [col];
-                if (input.indeterminate)
-                    return [`!${col}`];
-                return [];
-            });
-            await Options.save();
+            groups[name][origin] = prev.filter(d => d !== dir && d !== `!${dir}`);
+            if (box.checked)
+                groups[name][origin].push(dir);
+            else if (box.indeterminate)
+                groups[name][origin].push(`!${dir}`);
+            await Options.saveGroups();
         });
 
         groupsContainer.appendChild(g);
@@ -124,20 +120,20 @@ async function addGroup() {
 
     if (!name)
         return;
-    if (name in options.groups)
+    if (name in groups)
         return;
 
-    options.groups[name] = {};
+    groups[name] = {};
     newnameInput.value = '';
-    await Options.save();
+    await Options.saveGroups();
     updateGroupsDisplay();
 }
 
 async function deleteGroup(name) {
     if (!await utils.confirmAction(`Delete group ${name}?`))
         return;
-    delete options.groups[name];
-    await Options.save();
+    delete groups[name];
+    await Options.saveGroups();
     updateGroupsDisplay();
 }
 
@@ -151,17 +147,17 @@ async function addOrigin(group, input) {
         input.reportValidity();
         return;
     }
-    if (origin in options.groups[group])
+    if (origin in groups[group])
         return;
 
-    options.groups[group][origin] = [];
-    await Options.save();
+    groups[group][origin] = [];
+    await Options.saveGroups();
     updateGroupsDisplay();
 }
 
 async function removeOrigin(group, origin) {
-    delete options.groups[group][origin];
-    await Options.save();
+    delete groups[group][origin];
+    await Options.saveGroups();
     updateGroupsDisplay();
 }
 
@@ -171,4 +167,10 @@ newnameInput.addEventListener('keydown', (e) => {
         addGroup();
 });
 
+Options.addUpdateListener(() => {
+    // Dont update the page if user is working on it.
+    if (document.hasFocus())
+        return;
+    updateGroupsDisplay();
+});
 updateGroupsDisplay();

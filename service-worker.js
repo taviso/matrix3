@@ -24,7 +24,7 @@ async function applyStoredOptions() {
 
 chrome.runtime.onStartup.addListener(applyStoredOptions);
 chrome.runtime.onInstalled.addListener(applyStoredOptions);
-chrome.storage.onChanged.addListener(applyStoredOptions);
+Options.addUpdateListener(applyStoredOptions);
 
 // Set a badge on the toolbar icon for the given tab. Skipped when the
 // `badges` option is off so users can opt out of the visual clutter or

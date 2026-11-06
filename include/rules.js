@@ -1,4 +1,5 @@
 import Policy from '/include/policy.js'
+import Options from '/include/options.js'
 import { MessageTypes } from '/include/commands.js'
 
 // dNR priorities are ordinal: bypass > session > dynamic > static.
@@ -404,14 +405,53 @@ export default class Rules {
         }
     }
 
+    // Record the set of cloud keys this device has locally synced. Comparing
+    // against this common ancestor lets the next Push or Pull distinguish
+    // "deleted on one side" (was in synced, now missing) from "not yet synced
+    // to the other side" (never in synced).
+    async #getSyncedBaseline() {
+        let { synced } = await chrome.storage.local.get("synced");
+        return {
+            rules: new Set(synced?.rules ?? []),
+            groups: synced?.groups ?? {},
+        };
+    }
+
+    async #saveSyncedBaseline(ruleHosts, groups) {
+        await chrome.storage.local.set({
+            synced: { rules: [...new Set(ruleHosts)], groups },
+        });
+    }
+
+    // Three-way merge of a group's origin map against `base` (the origin map
+    // at last sync): keep `theirs` unless deleted in `ours`, and apply `ours`
+    // unless `ours` is unchanged from `base` while `theirs` changed.
+    #mergeGroupOrigins(ours = {}, theirs = {}, base = {}) {
+        let sameDirs = (a, b) => a && b && a.length === b.length && a.every(v => b.includes(v));
+        let merged = {};
+
+        for (let [origin, dirs] of Object.entries(theirs)) {
+            if (origin in ours || !(origin in base))
+                merged[origin] = dirs;
+        }
+        for (let [origin, dirs] of Object.entries(ours)) {
+            if (!(origin in base) || !sameDirs(dirs, base[origin]))
+                merged[origin] = dirs;
+        }
+        return merged;
+    }
+
     // These two routines don't actually do any cloud stuff, chrome syncs the
     // options object automatically.
     // We're limited with how much data we're allowed to store in there, so keep
     // the representation simple.
     async pushToCloud() {
         let dynamic = this.getRules().filter(r => !r.isSession);
+        let groups = structuredClone(await Options.getGroups());
         let storage = await chrome.storage.sync.get(null);
+        let synced = await this.#getSyncedBaseline();
         let toSet = {};
+        let stale = [];
 
         for (let rule of dynamic) {
             let policy = rule.policy;
@@ -422,16 +462,27 @@ export default class Rules {
             toSet[`rule:${rule.host}`] = { policy: policy.toHeader() };
         }
 
-        // Push clobbers, so drop any cloud rule the local set no longer has.
-        let stale = [];
+        for (let [name, group] of Object.entries(groups)) {
+            let key = `group:${name}`;
+            toSet[key] = this.#mergeGroupOrigins(group, storage[key], synced.groups[name]);
+        }
 
+        // Only remove cloud rules or groups that existed at our last sync and
+        // were since deleted locally; leave unpulled items from other devices alone.
         for (let key of Object.keys(storage)) {
-            if (key.startsWith("rule:") && !(key in toSet))
+            let name = key.slice(key.indexOf(":") + 1);
+            if (key.startsWith("rule:") && !(key in toSet) && synced.rules.has(name))
+                stale.push(key);
+            if (key.startsWith("group:") && !(key in toSet) && name in synced.groups)
                 stale.push(key);
         }
 
-        await chrome.storage.sync.remove(stale);
         await chrome.storage.sync.set(toSet);
+        await chrome.storage.sync.remove(stale);
+
+        // Record what we have locally; remote-only items left in cloud remain
+        // outside our baseline until pullFromCloud() imports them.
+        await this.#saveSyncedBaseline(dynamic.map(r => r.host), groups);
 
         // Record this push so the panel can show when we last synced.
         await chrome.storage.sync.set({ [kLastPushKey]: { time: Date.now() } });
@@ -448,33 +499,57 @@ export default class Rules {
         let storage = await chrome.storage.sync.get(null);
         return Object.keys(storage)
             .filter(k => k.startsWith("rule:"))
-            .map(k => k.slice(5));
+            .map(k => k.slice(k.indexOf(":") + 1));
     }
 
     async pullFromCloud() {
         let mergedMap = new Map();
+        let groups = await Options.getGroups();
         let storage = await chrome.storage.sync.get(null);
+        let synced = await this.#getSyncedBaseline();
         let cloudRules = Object.keys(storage).filter(k => k.startsWith("rule:"));
+        let cloudGroups = Object.keys(storage).filter(k => k.startsWith("group:"));
 
+        // Keep local rules unless they were in our last sync and removed from cloud.
         for (let r of this.getRules().filter(r => !r.isSession)) {
-            mergedMap.set(r.host, r.toRule());
+            if (`rule:${r.host}` in storage || !synced.rules.has(r.host))
+                mergedMap.set(r.host, r.toRule());
         }
 
-        for (let host of cloudRules) {
+        for (let key of cloudRules) {
             let rule = new Rule();
-            let policy = new Policy().fromHeader(storage[host].policy);
+            let policy = new Policy().fromHeader(storage[key].policy);
 
             // Re-derive report-uri for this device rather than trusting storage.
             policy.directives["report-uri"] = [chrome.runtime.getURL("csp-report")];
 
-            // host is the storage key, so remove the "rule:" prefix.
-            rule.host = host.slice(5);
+            // key is the storage key, so strip the "rule:" prefix.
+            rule.host = key.slice(key.indexOf(":") + 1);
             rule.priority = kDynamicPriority;
             rule.fromPolicy(policy);
             mergedMap.set(rule.host, rule.toRule());
         }
 
         await this.replaceAllRules(null, Array.from(mergedMap.values()));
+
+        // Drop local groups that existed at last sync and were deleted in cloud.
+        for (let name of Object.keys(groups)) {
+            if (name !== "Ignore" && !(`group:${name}` in storage) && name in synced.groups)
+                delete groups[name];
+        }
+
+        let pulledGroups = {};
+        for (let key of cloudGroups) {
+            let name = key.slice(key.indexOf(":") + 1);
+            pulledGroups[name] = storage[key];
+            groups[name] = this.#mergeGroupOrigins(storage[key], groups[name], synced.groups[name]);
+        }
+
+        await Options.saveGroups();
+
+        // Record only what came from cloud; local-only items remain outside
+        // our baseline until pushToCloud() uploads them.
+        await this.#saveSyncedBaseline(cloudRules.map(k => k.slice(k.indexOf(":") + 1)), pulledGroups);
         return cloudRules.length;
     }
 

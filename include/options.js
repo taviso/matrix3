@@ -1,7 +1,7 @@
 
 // The default options if none are set.
 const kDefaultOptions = {
-    version: 2,
+    version: 3,
     defaultpolicy: 0,
     advanced: false,
     badges: true,
@@ -24,14 +24,28 @@ const kMigrations = {
             }
         }
     },
+    2: (opts, groups) => {
+        if (opts.groups) {
+            for (let [name, group] of Object.entries(opts.groups))
+                groups[name] = Object.assign(groups[name] ?? {}, group);
+            delete opts.groups;
+        }
+    },
 };
 
-// A cache of chrome.storage.sync's `options` key, we want to check options in
-// a lot of hot paths, and a storage.sync.get call everytime is suboptimal.
+// A cache of chrome.storage.sync's `options` key and chrome.storage.local's
+// `groups` key; we check both in hot paths, so querying storage every time is
+// suboptimal.
 export default class Options {
     static #cache = null;
+    static #groups = null;
+    static #migrated = false;
     static #promise;
     static #listeners = [];
+
+    static {
+        chrome.storage.onChanged.addListener(Options.#onChanged);
+    }
 
     static migrate(opts) {
         let v = opts.version ?? 1;
@@ -44,53 +58,105 @@ export default class Options {
 
         for (; v < kDefaultOptions.version; v++) {
             console.debug("options", `migrating options v${v} -> v${v + 1}`);
-            kMigrations[v]?.(opts);
+            kMigrations[v]?.(opts, Options.#groups ??= { Ignore: {} });
             opts.version = v + 1;
         }
         return true;
     }
 
+    static async #onChanged(changes, area) {
+        if (area !== "sync" && area !== "local")
+            return;
+        await Options.#load();
+
+        if (area === "sync" && changes.options) {
+            let newValue = changes.options.newValue;
+            if (newValue)
+                newValue.version ??= 1;
+            // Mutate in place so consumers can hold a stable reference.
+            for (let key of Object.keys(Options.#cache))
+                delete Options.#cache[key];
+            Object.assign(Options.#cache, kDefaultOptions, newValue);
+            if (Options.migrate(Options.#cache)) {
+                Options.#migrated = true;
+                await Options.save();
+            }
+        } else if (area === "local" && changes.groups) {
+            for (let key of Object.keys(Options.#groups))
+                delete Options.#groups[key];
+            Object.assign(Options.#groups, { Ignore: {} }, changes.groups.newValue);
+        } else {
+            return;
+        }
+
+        for (let callback of Options.#listeners)
+            callback(Options.#cache);
+    }
+
     static #load() {
-        Options.#promise ??= chrome.storage.sync.get("options").then(({ options }) => {
+        Options.#promise ??= Promise.all([
+            chrome.storage.sync.get("options"),
+            chrome.storage.local.get("groups"),
+        ]).then(async ([{ options }, { groups }]) => {
             if (options)
                 options.version ??= 1;
+
+            Options.#groups = Object.assign({ Ignore: {} }, groups);
+
             // Default configuration for fresh installations or partial objects.
             Options.#cache = Object.assign({}, kDefaultOptions, options);
-            if (Options.migrate(Options.#cache))
-                Options.save();
-            chrome.storage.onChanged.addListener((changes) => {
-                if (!changes.options)
-                    return;
-                let newValue = changes.options.newValue;
-                if (newValue)
-                    newValue.version ??= 1;
-                // Mutate in place so consumers can hold a stable reference.
-                for (let key of Object.keys(Options.#cache))
-                    delete Options.#cache[key];
-                Object.assign(Options.#cache, kDefaultOptions, newValue);
-                Options.migrate(Options.#cache);
-                for (let callback of Options.#listeners)
-                    callback(Options.#cache);
-            });
+            if (Options.migrate(Options.#cache)) {
+                Options.#migrated = true;
+                await Options.#saveInternal().catch(console.warn);
+            }
         });
         return Options.#promise;
     }
 
     static async get() {
-        if (Options.#cache === null)
-            await Options.#load();
+        await Options.#load();
         return Options.#cache;
     }
 
+    static async getGroups() {
+        await Options.#load();
+        return Options.#groups;
+    }
+
     static async save() {
-        if (Options.#cache === null)
-            await Options.#load();
+        await Options.#load();
+        return Options.#saveInternal();
+    }
+
+    static async #saveInternal() {
         if (Options.#cache.version > kDefaultOptions.version) {
             console.warn("options", `refusing to save over newer options v${Options.#cache.version}`);
             alert("Options were synced from a newer version of matrix³. Please update the extension to save changes.");
             return false;
         }
-        await chrome.storage.sync.set({ options: Options.#cache });
+        let toSet = { options: Options.#cache };
+        let migrated = Options.#migrated;
+        if (migrated) {
+            await chrome.storage.local.set({ groups: Options.#groups });
+            let keys = Object.keys(Options.#groups).map(name => `group:${name}`);
+            let existing = await chrome.storage.sync.get(keys);
+            for (let [name, group] of Object.entries(Options.#groups))
+                toSet[`group:${name}`] = Object.assign({}, existing[`group:${name}`], group);
+        }
+        await chrome.storage.sync.set(toSet);
+        if (migrated) {
+            let { synced } = await chrome.storage.local.get("synced");
+            await chrome.storage.local.set({
+                synced: { rules: synced?.rules ?? [], groups: Options.#groups },
+            });
+        }
+        Options.#migrated = false;
+        return true;
+    }
+
+    static async saveGroups() {
+        await Options.#load();
+        await chrome.storage.local.set({ groups: Options.#groups });
         return true;
     }
 

@@ -7,6 +7,7 @@ import { MessageTypes } from '/include/commands.js'
 
 let RulesManager = sidepanel.RulesManager;
 let options = await Options.get();
+let groups = await Options.getGroups();
 
 // Attach tooltips to the static sandbox checkboxes.
 document.querySelectorAll("td input.sandbox").forEach(box => {
@@ -181,7 +182,7 @@ function applyTrustGroup() {
     if (!name)
         return;
 
-    group = options.groups?.[name] ?? {};
+    group = groups?.[name] ?? {};
 
     for (let [origin, dirs] of Object.entries(group)) {
         addSourceCheckboxRow(origin);
@@ -429,7 +430,7 @@ async function getCurrentRules(hostName, container)
 
 function isIgnored(source, directive)
 {
-    let dirs = options.groups?.Ignore?.[source];
+    let dirs = groups?.Ignore?.[source];
     if (dirs?.includes(`!${directive}`))
         return false;
     return dirs?.includes("default-src") || dirs?.includes(directive);
@@ -690,7 +691,7 @@ async function refreshTable(domain, tab) {
 function populateTrustGroups() {
     let select = document.getElementById('trustgroup');
     let prev = select.value;
-    let names = Object.keys(options.groups ?? {}).filter(name => name !== 'Ignore');
+    let names = Object.keys(groups ?? {}).filter(name => name !== 'Ignore');
 
     select.replaceChildren(...names.map(name => {
         let opt = document.createElement('option');
