@@ -22,12 +22,10 @@ export default class CspReport {
         if (CspReport.protocolSource(uri + ":") !== undefined)
             uri += ":";
 
-        try {
-            return new URL(uri);
-        } catch (e) {
-            console.warn("cspreport", "unexpected unparseable uri:", uri, e);
-            return null;
-        }
+        let url = URL.parse(uri);
+        if (!url)
+            console.warn("cspreport", "unexpected unparseable uri:", uri);
+        return url;
     }
 
     constructor(details) {

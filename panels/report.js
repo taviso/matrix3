@@ -679,10 +679,7 @@ async function refreshTable(domain, tab) {
     setCurrentViolations(await refreshViolations(domain, tab), fragment);
 
     // Sort the fragment children before appending
-    let rows = Array.from(fragment.children);
-    rows.sort(compareSourceRows);
-
-    fragment.replaceChildren(...rows);
+    fragment.replaceChildren(...Array.from(fragment.children).sort(compareSourceRows));
 
     // Atomic swap
     directivesTable.tBodies[0].replaceChildren(fragment);

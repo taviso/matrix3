@@ -276,8 +276,7 @@ export default class Rules {
 
         if (ruleset) {
             let p = await ruleset.toPolicy();
-            for (const [dir, sources] of Object.entries(p.directives))
-                policy.directives[dir] = [...sources];
+            Object.assign(policy.directives, structuredClone(p.directives));
         }
         return policy;
     }

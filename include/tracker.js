@@ -101,18 +101,9 @@ export default class ViolationTracker {
         let tab = this.#getOrCreateTab(tabId);
         let policy = tab.policy;
         let blocked = report.blocked?.origin;
-        let docUrl;
+        let docUrl = URL.parse(report.report["document-uri"]);
 
-        if (!report.blocked)
-            return false;
-
-        try {
-            docUrl = new URL(report.report["document-uri"]);
-        } catch (e) {
-            return false;
-        }
-
-        if (!docUrl.hostname)
+        if (!report.blocked || !docUrl?.hostname)
             return false;
 
         let origin = docUrl.origin;

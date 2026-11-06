@@ -21,9 +21,7 @@ function compareRowLabels(a, b) {
 // Sort tbody rows by the given comparator (default: alphabetical by first
 // cell's text content). Header rows in <thead> are untouched.
 export function sortTable(table, compare = compareRowLabels) {
-    let rows = Array.from(table.tBodies[0].rows);
-    rows.sort(compare);
-    table.tBodies[0].append(...rows);
+    table.tBodies[0].append(...Array.from(table.tBodies[0].rows).sort(compare));
 }
 
 // Return a property from each header cell, e.g. ('id') for column IDs or
