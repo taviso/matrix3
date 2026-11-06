@@ -15,6 +15,7 @@ const groups = await Options.getGroups();
 async function refreshLastPush() {
     let time = await RulesManager.getCloudTime();
     let rules = await RulesManager.getCloudRules();
+    let groups = await RulesManager.getCloudGroups();
     let element = document.getElementById("lastpush");
 
     if (!time) {
@@ -23,7 +24,7 @@ async function refreshLastPush() {
     }
 
     let when = new Date(time).toLocaleString();
-    element.textContent = `Last cloud push: ${rules.length} rules, ${when}`;
+    element.textContent = `Last cloud push: ${rules.length} rules, ${groups.length} groups, ${when}`;
 }
 
 async function buildExport() {
@@ -52,7 +53,7 @@ downloadElement.addEventListener("click", () => {
 });
 
 pushElement.addEventListener("click", async () => {
-    if (!await utils.confirmAction("Push dynamic rules into cloud storage?"))
+    if (!await utils.confirmAction("Push settings into cloud storage?"))
         return;
     try {
         let count = await utils.callWithLock("cloud", () => RulesManager.pushToCloud());
@@ -65,7 +66,7 @@ pushElement.addEventListener("click", async () => {
 });
 
 pullElement.addEventListener("click", async () => {
-    if (!await utils.confirmAction("Pull dynamic rules from cloud storage?"))
+    if (!await utils.confirmAction("Pull settings from cloud storage?"))
         return;
     try {
         let count = await utils.callWithLock("cloud", () => RulesManager.pullFromCloud());

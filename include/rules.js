@@ -502,6 +502,13 @@ export default class Rules {
             .map(k => k.slice(k.indexOf(":") + 1));
     }
 
+    async getCloudGroups() {
+        let storage = await chrome.storage.sync.get(null);
+        return Object.keys(storage)
+            .filter(k => k.startsWith("group:"))
+            .map(k => k.slice(k.indexOf(":") + 1));
+    }
+
     async pullFromCloud() {
         let mergedMap = new Map();
         let groups = await Options.getGroups();
@@ -542,7 +549,10 @@ export default class Rules {
         for (let key of cloudGroups) {
             let name = key.slice(key.indexOf(":") + 1);
             pulledGroups[name] = storage[key];
-            groups[name] = this.#mergeGroupOrigins(storage[key], groups[name], synced.groups[name]);
+            let merged = this.#mergeGroupOrigins(storage[key], groups[name], synced.groups[name]);
+            // Don't recreate a locally deleted group as `{}` unless cloud has new edits.
+            if (name in groups || !(name in synced.groups) || Object.keys(merged).length > 0)
+                groups[name] = merged;
         }
 
         await Options.saveGroups();

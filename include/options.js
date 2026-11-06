@@ -39,7 +39,6 @@ const kMigrations = {
 export default class Options {
     static #cache = null;
     static #groups = null;
-    static #migrated = false;
     static #promise;
     static #listeners = [];
 
@@ -47,7 +46,7 @@ export default class Options {
         chrome.storage.onChanged.addListener(Options.#onChanged);
     }
 
-    static migrate(opts) {
+    static migrate(opts, groups = Options.#groups ??= { Ignore: {} }) {
         let v = opts.version ?? 1;
         if (v > kDefaultOptions.version) {
             console.warn("options", `options version ${v} is newer than supported ${kDefaultOptions.version}`);
@@ -58,7 +57,7 @@ export default class Options {
 
         for (; v < kDefaultOptions.version; v++) {
             console.debug("options", `migrating options v${v} -> v${v + 1}`);
-            kMigrations[v]?.(opts, Options.#groups ??= { Ignore: {} });
+            kMigrations[v]?.(opts, groups);
             opts.version = v + 1;
         }
         return true;
@@ -77,10 +76,8 @@ export default class Options {
             for (let key of Object.keys(Options.#cache))
                 delete Options.#cache[key];
             Object.assign(Options.#cache, kDefaultOptions, newValue);
-            if (Options.migrate(Options.#cache)) {
-                Options.#migrated = true;
-                await Options.save();
-            }
+            if (Options.migrate(Options.#cache))
+                await Options.#saveInternal(true);
         } else if (area === "local" && changes.groups) {
             for (let key of Object.keys(Options.#groups))
                 delete Options.#groups[key];
@@ -105,10 +102,8 @@ export default class Options {
 
             // Default configuration for fresh installations or partial objects.
             Options.#cache = Object.assign({}, kDefaultOptions, options);
-            if (Options.migrate(Options.#cache)) {
-                Options.#migrated = true;
-                await Options.#saveInternal().catch(console.warn);
-            }
+            if (Options.migrate(Options.#cache))
+                await Options.#saveInternal(true).catch(console.warn);
         });
         return Options.#promise;
     }
@@ -128,14 +123,13 @@ export default class Options {
         return Options.#saveInternal();
     }
 
-    static async #saveInternal() {
+    static async #saveInternal(migrated = false) {
         if (Options.#cache.version > kDefaultOptions.version) {
             console.warn("options", `refusing to save over newer options v${Options.#cache.version}`);
             alert("Options were synced from a newer version of matrix³. Please update the extension to save changes.");
             return false;
         }
         let toSet = { options: Options.#cache };
-        let migrated = Options.#migrated;
         if (migrated) {
             await chrome.storage.local.set({ groups: Options.#groups });
             let keys = Object.keys(Options.#groups).map(name => `group:${name}`);
@@ -150,7 +144,6 @@ export default class Options {
                 synced: { rules: synced?.rules ?? [], groups: Options.#groups },
             });
         }
-        Options.#migrated = false;
         return true;
     }
 

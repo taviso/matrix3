@@ -78,12 +78,11 @@ export async function getActiveTab()
 // Apply persistent option changes (advanced-class toggle, default policy).
 export async function applyOptions()
 {
-    await RulesManager.init();
-
     document.body.classList.toggle("show-advanced", !!options.advanced);
 
     if (options.defaultpolicy !== undefined)
         await RulesManager.applyDefaultPolicy(options.defaultpolicy);
 }
 
+await RulesManager.init();
 await applyOptions();
