@@ -10,7 +10,7 @@ const staticTbl = document.getElementById('static');
 
 function updateRuleTables() {
     return utils.callWithLock("rules", async () => {
-        let rules = RulesManager.getRules();
+        let rules = RulesManager.getRules().sort((a, b) => a.host.localeCompare(b.host));
         let base  = RulesManager.getAllStaticRules();
 
         utils.clearTable(dynamicTbl);
