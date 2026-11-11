@@ -163,8 +163,46 @@ document.getElementById('srcdoc-btn').addEventListener('click', () => {
 <h2>Service Worker</h2>
 <p><b>Interceptor Status:</b> <!-- SW_STATUS --></p>
 <div id="sw-out">Checking service worker status...</div>
+<p>
+  <button id="ws-page-btn" type="button">Page WebSocket (wss://)</button>
+  <button id="ws-sw-btn" type="button">SW WebSocket (wss://)</button>
+</p>
+<div id="ws-out">Click a button to test wss:// connection...</div>
 <script>
+const kTestWsUrl = 'wss://echo.websocket.org';
+
+document.getElementById('ws-page-btn').addEventListener('click', () => {
+  const out = document.getElementById('ws-out');
+  out.textContent = `Connecting Page WebSocket (${kTestWsUrl})...`;
+  try {
+    const ws = new WebSocket(kTestWsUrl);
+    ws.addEventListener('open', () => {
+      out.textContent = `Page WebSocket opened: ${kTestWsUrl}`;
+      ws.close();
+    });
+    ws.addEventListener('error', () => {
+      out.textContent = `Page WebSocket error / blocked: ${kTestWsUrl}`;
+    });
+  } catch (err) {
+    out.textContent = `Page WebSocket threw: ${err}`;
+  }
+});
+
+document.getElementById('ws-sw-btn').addEventListener('click', () => {
+  const out = document.getElementById('ws-out');
+  if (!navigator.serviceWorker?.controller) {
+    out.textContent = 'No active Service Worker controller (allow worker-src \'self\' and reload twice)';
+    return;
+  }
+  out.textContent = `Asking SW to connect WebSocket (${kTestWsUrl})...`;
+  navigator.serviceWorker.controller.postMessage({ cmd: 'websocket', url: kTestWsUrl });
+});
+
 if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    document.getElementById('ws-out').textContent = e.data;
+  });
+
   navigator.serviceWorker.register('/sw.js')
     .then(reg => {
       document.getElementById('sw-out').textContent = 'Registration successful, scope: ' + reg.scope;

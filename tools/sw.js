@@ -41,3 +41,21 @@ self.addEventListener('fetch', (event) => {
 
     event.respondWith(fetch(event.request));
 });
+
+self.addEventListener('message', (event) => {
+    const { cmd, url } = event.data ?? {};
+    if (cmd === 'websocket') {
+        try {
+            const ws = new WebSocket(url);
+            ws.addEventListener('open', () => {
+                event.source?.postMessage(`SW WebSocket opened: ${url}`);
+                ws.close();
+            });
+            ws.addEventListener('error', () => {
+                event.source?.postMessage(`SW WebSocket error / blocked: ${url}`);
+            });
+        } catch (err) {
+            event.source?.postMessage(`SW WebSocket threw: ${err}`);
+        }
+    }
+});
