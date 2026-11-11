@@ -1,6 +1,14 @@
 <!doctype html>
 <html>
 <body style="font-family:sans-serif;margin:8px">
-same-origin frame
+same-origin frame <span id="out"></span>
+<script>
+document.write('(script working) ');
+if (new URLSearchParams(location.search).has('fetch')) {
+  fetch('https://api.github.com/')
+    .then(() => document.getElementById('out').textContent = '(fetch ok -- CSP bypassed!)')
+    .catch(() => document.getElementById('out').textContent = '(fetch blocked by CSP)');
+}
+</script>
 </body>
 </html>

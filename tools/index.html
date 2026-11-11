@@ -42,6 +42,9 @@ catch (e) { document.write('<p>eval blocked</p>'); }
 <h2>Frame: cross-origin</h2>
 <iframe src="https://example.com" width="300" height="60"></iframe>
 
+<h2>Object: same-origin</h2>
+<object data="/frame.html" width="300" height="60">object blocked / fallback</object>
+
 <h2>External script</h2>
 <script src="https://www.google.com/jsapi"></script>
 
@@ -51,6 +54,108 @@ catch (e) { document.write('<p>eval blocked</p>'); }
 fetch('https://api.github.com/')
   .then(() => document.getElementById('fetch-out').textContent = 'fetch ok')
   .catch(() => document.getElementById('fetch-out').textContent = 'fetch blocked');
+</script>
+
+<hr>
+
+<h2>Web Worker (postMessage &rarr; dynamic import)</h2>
+<p>
+  <button id="worker-url-btn" type="button">Worker (/worker.js) import()</button>
+  <button id="worker-blob-btn" type="button">Blob Worker (blob:) import()</button>
+  <button id="worker-data-btn" type="button">Data Worker (data:) import()</button>
+  <button id="worker-chain-btn" type="button">Chain (/worker.js &rarr; blob: &rarr; data:) import()</button>
+</p>
+<div id="worker-out">Click a button to test worker dynamic import...</div>
+<script>
+
+// Third party script to test
+const kTestModule = 'https://cdn.jsdelivr.net/npm/d3/+esm';
+
+function runWorkerCmd(url, message, revoke = false) {
+  const out = document.getElementById('worker-out');
+  out.textContent = `Starting worker (${url})...`;
+  try {
+    const w = new Worker(url);
+    w.addEventListener('message', (e) => {
+      out.textContent = e.data;
+      if (revoke) URL.revokeObjectURL(url);
+    });
+    w.addEventListener('error', (e) => {
+      out.textContent = 'worker error: ' + (e.message || 'blocked');
+      if (revoke) URL.revokeObjectURL(url);
+    });
+    w.postMessage(message);
+  } catch (err) {
+    out.textContent = 'worker creation blocked: ' + err;
+  }
+}
+
+document.getElementById('worker-url-btn').addEventListener('click', () => {
+  runWorkerCmd('/worker.js', { cmd: 'import', param: kTestModule });
+});
+
+document.getElementById('worker-blob-btn').addEventListener('click', async () => {
+  const code = await (await fetch('/worker.js')).text();
+  const blob = new Blob([code], { type: 'text/javascript' });
+  runWorkerCmd(URL.createObjectURL(blob), { cmd: 'import', param: kTestModule }, true);
+});
+
+document.getElementById('worker-data-btn').addEventListener('click', async () => {
+  const code = await (await fetch('/worker.js')).text();
+  const dataUrl = 'data:text/javascript;charset=utf-8,' + encodeURIComponent(code);
+  runWorkerCmd(dataUrl, { cmd: 'import', param: kTestModule });
+});
+
+document.getElementById('worker-chain-btn').addEventListener('click', async () => {
+  const code = await (await fetch('/worker.js')).text();
+  const dataUrl = 'data:text/javascript;charset=utf-8,' + encodeURIComponent(code);
+  runWorkerCmd('/worker.js', {
+    cmd: 'spawn',
+    param: {
+      blobCode: code,
+      message: {
+        cmd: 'spawn',
+        param: {
+          url: dataUrl,
+          message: { cmd: 'import', param: kTestModule }
+        }
+      }
+    }
+  });
+});
+</script>
+
+<hr>
+
+<h2>Special Contexts (&lt;object&gt; &amp; opaque-origin srcdoc)</h2>
+<p>
+  <button id="object-btn" type="button">Load &lt;object data="/frame.html?fetch=1"&gt;</button>
+  <button id="srcdoc-btn" type="button">Load &lt;iframe sandbox="allow-scripts" srcdoc="..."&gt;</button>
+</p>
+<div id="special-out"></div>
+<script>
+document.getElementById('object-btn').addEventListener('click', () => {
+  const container = document.getElementById('special-out');
+  const obj = document.createElement('object');
+  obj.data = '/frame.html?fetch=1';
+  obj.width = '420';
+  obj.height = '50';
+  container.replaceChildren(obj);
+});
+
+document.getElementById('srcdoc-btn').addEventListener('click', () => {
+  const container = document.getElementById('special-out');
+  const ifr = document.createElement('iframe');
+  ifr.sandbox = 'allow-scripts';
+  ifr.width = '420';
+  ifr.height = '50';
+  ifr.srcdoc = `<body style="font-family:sans-serif;margin:8px">sandboxed srcdoc <span id="out">...</span><script>
+    fetch('https://untrusted.example.com/')
+      .then(() => document.getElementById('out').textContent = '(fetch ok)')
+      .catch(() => document.getElementById('out').textContent = '(fetch blocked -- check if untrusted.example.com is in Report!)');
+  <\/script></body>`;
+  container.replaceChildren(ifr);
+});
 </script>
 
 <hr>
