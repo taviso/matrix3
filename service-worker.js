@@ -74,35 +74,51 @@ chrome.webRequest.onHeadersReceived.addListener(async (details) => {
                    data: { id: details.tabId }
             }).catch(() => {});
     }, {
-        types: [ "main_frame", "sub_frame" ],
+        types: [ "main_frame", "sub_frame", "object" ],
         urls: [ "<all_urls>" ]
     }, [ "responseHeaders" ]
 );
 
 // Monitor for CSP violation reports.
 chrome.webRequest.onBeforeRequest.addListener(async (details) => {
+        if (details.type === "websocket" && details.url !== "wss://_matrix3.internal/csp-report")
+            return;
+
         console.debug("service", "onbeforerequest", details.tabId, details);
 
-        // Drop reports from documents that no longer exist -- POSTs from the
-        // previous page can still be in flight when the user reloads.
-        if (!await tracker.hasDocument(details.tabId, details.documentId))
+        let tabIds = [];
+        if (details.tabId !== -1) {
+            // Drop reports from documents that no longer exist -- POSTs from the
+            // previous page can still be in flight when the user reloads.
+            if (await tracker.hasDocument(details.tabId, details.documentId))
+                tabIds.push(details.tabId);
+        } else {
+            // ServiceWorker and SharedWorker reports arrive with tabId -1;
+            // attribute them to any open tabs matching the worker's origin.
+            tabIds = await tracker.findTabsForOrigin(details.initiator);
+        }
+
+        if (!tabIds.length)
             return;
 
-        // Check if we're learning about a new violation.
-        if (!await tracker.addTabViolation(details.tabId, new CspReport(details)))
-            return;
+        let report = new CspReport(details);
+        for (let tabId of tabIds) {
+            // Check if we're learning about a new violation.
+            if (!await tracker.addTabViolation(tabId, report))
+                continue;
 
-        // Report new violations known by marking the icon.
-        setBadge(details.tabId, "!", "#dc2626");
+            // Report new violations known by marking the icon.
+            setBadge(tabId, "!", "#dc2626");
 
-        // Update any listening sidepanel.
-        chrome.runtime.sendMessage({
-            command: MessageTypes.NOTIFY_UPDATE,
-               data: { id: details.tabId }
-        }).catch(() => {});
+            // Update any listening sidepanel.
+            chrome.runtime.sendMessage({
+                command: MessageTypes.NOTIFY_UPDATE,
+                   data: { id: tabId }
+            }).catch(() => {});
+        }
 
     }, {
-        types: [ "csp_report" ],
+        types: [ "csp_report", "websocket" ],
          urls: [ "<all_urls>" ]
     }, [ "requestBody" ]
 );
@@ -111,7 +127,7 @@ chrome.webRequest.onBeforeRequest.addListener(async (details) => {
 // alongside everything else, so a top-frame navigation wipes the whole tree.
 chrome.webNavigation.onCommitted.addListener((details) => {
     console.debug("service", "oncommitted", details.tabId, details);
-    tracker.addDocument(details.tabId, details.documentId);
+    tracker.addDocument(details.tabId, details.documentId, details.url, details.parentDocumentId);
 });
 
 // Make the matrix button open the sidepanel.

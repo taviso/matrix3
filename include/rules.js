@@ -29,7 +29,7 @@ class Rule {
             operation: "set",
         }];
         this.condition.resourceTypes = [
-            "main_frame", "sub_frame"
+            "main_frame", "sub_frame", "object", "script", "xmlhttprequest"
         ];
         this.condition.urlFilter = rule?.condition?.urlFilter;
         this.priority = rule?.priority;
@@ -291,6 +291,24 @@ export default class Rules {
         return ruleset.toPolicy();
     }
 
+    // If we point our report-uri at our web_accessible_resource, there is no
+    // console noise when we block requests. However, if workers are allowed,
+    // we have to switch to a different solution, those requests are handled
+    // differently by Chromium and cannot be intercepted.
+    // The problem is WorkerScriptFetcher::CreateFactoryBundle doesn't wrap non-network
+    // scheme factories (i.e. chrome-extension://) in
+    // WebRequestProxyingURLLoaderFactory, and
+    // ServiceWorkerNetworkProviderForFrame intercepts https: subresources. The solution
+    // is to use a wss: report-uri instead, which should bypass SW interception
+    // while still reaching webRequest.
+    #setReportUri(policy) {
+        policy.directives["report-uri"] = [
+            policy.isDirectiveDisabled("worker-src")
+                ? chrome.runtime.getURL("csp-report")
+                : "wss://_matrix3.internal/csp-report"
+        ];
+    }
+
     // Install rulePolicy as a session rule for hostName, replacing any prior
     // session. Any existing dynamic stays put; the session's priority is
     // bumped above it so the session wins at runtime, and Abandon can then
@@ -300,8 +318,7 @@ export default class Rules {
         let oldSession = this.#findSessionForHost(hostName);
         let oldDynamic = this.#findDynamicForHost(hostName);
 
-        // Point report-uri at our extension's WAR to avoid ERR_BLOCKED_BY_CLIENT errors.
-        rulePolicy.directives["report-uri"] = [chrome.runtime.getURL("csp-report")];
+        this.#setReportUri(rulePolicy);
 
         rule.host = hostName;
         rule.priority = kDynamicPriority;
@@ -528,7 +545,7 @@ export default class Rules {
             let policy = new Policy().fromHeader(storage[key].policy);
 
             // Re-derive report-uri for this device rather than trusting storage.
-            policy.directives["report-uri"] = [chrome.runtime.getURL("csp-report")];
+            this.#setReportUri(policy);
 
             // key is the storage key, so strip the "rule:" prefix.
             rule.host = key.slice(key.indexOf(":") + 1);

@@ -22,7 +22,10 @@
     "condition": {
       "resourceTypes": [
         "main_frame",
-        "sub_frame"
+        "sub_frame",
+        "object",
+        "script",
+        "xmlhttprequest"
       ]
     }
   }

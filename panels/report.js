@@ -55,7 +55,9 @@ async function getOriginsInScope(scope) {
     let origins = new Set([`https://${scope}`]);
 
     for (let f of frames) {
-        let u = new URL(f.url);
+        let u = URL.parse(f.url);
+        if (!u || u.origin === "null")
+            continue;
         if (await psl.getScopedDomain(u.hostname) === scope) {
             origins.add(u.origin);
         }
@@ -77,9 +79,10 @@ document.body.addEventListener('click', async (e) => {
             if (!await utils.confirmAction(`Remove all session and dynamic rules for ${host}?`)) return;
             await RulesManager.resetHostRules(host);
             if (options?.unregistersw) {
-                chrome.browsingData.removeServiceWorkers(
-                    { origins: await getOriginsInScope(host) }
-                ).catch(e => console.warn("report", `failed to remove ${host} service workers`, e));
+                await chrome.browsingData.remove(
+                    { origins: await getOriginsInScope(host) },
+                    { cache: true, cacheStorage: true, serviceWorkers: true }
+                ).catch(e => console.warn("report", `failed to clear ${host} browsing data`, e));
             }
             break;
         case 'abandon':

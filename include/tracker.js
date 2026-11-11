@@ -11,7 +11,7 @@ import * as psl from '/include/psl.js'
 class Tab {
     server = {};
     policy = {};
-    documents = new Set();
+    documents = new Map();
 
     // Chrome will suspend our service worker when idle, and we'll lose any
     // data we're tracking in memory. That's not a big problem, just a minor
@@ -30,7 +30,12 @@ class Tab {
                 this.policy[domain][dir] = new Set(srcs);
         }
         this.documents.clear();
-        data.documents?.forEach(d => this.documents.add(d));
+        if (Array.isArray(data.documents)) {
+            data.documents.forEach(d => this.documents.set(d, ""));
+        } else {
+            for (let [id, url] of Object.entries(data.documents ?? {}))
+                this.documents.set(id, url);
+        }
         return this;
     }
 
@@ -47,7 +52,7 @@ class Tab {
                     ),
                 ])
             ),
-            documents: Array.from(this.documents),
+            documents: Object.fromEntries(this.documents),
         };
     }
 }
@@ -102,6 +107,15 @@ export default class ViolationTracker {
         let policy = tab.policy;
         let blocked = report.blocked?.origin;
         let docUrl = URL.parse(report.report["document-uri"]);
+
+        // Local-scheme contexts (blob: workers, about:srcdoc frames, etc.)
+        // report a bare scheme like "blob" or "about" as document-uri, so
+        // fall back to the request initiator's origin or the owning document's
+        // committed URL (for opaque origins like data: workers or sandboxed frames).
+        if (!docUrl?.hostname)
+            docUrl = report.initiator;
+        if (!docUrl?.hostname)
+            docUrl = URL.parse(tab.documents.get(report.documentId));
 
         if (!report.blocked || !docUrl?.hostname)
             return false;
@@ -181,18 +195,43 @@ export default class ViolationTracker {
         this.#saveState();
     }
 
-    // Track which documentIds are currently live for the tab so we can drop
-    // csp_reports from documents that no longer exist (e.g. POSTs in flight
-    // from the previous page that arrive after a reload).
-    async addDocument(tabId, documentId) {
+    // Track which documentIds are currently live for the tab (along with their
+    // effective origin URL) so we can drop csp_reports from documents that no
+    // longer exist and attribute opaque-origin reports back to their owner.
+    async addDocument(tabId, documentId, url, parentDocumentId) {
         await this.#state;
-        this.#getOrCreateTab(tabId).documents.add(documentId);
+        let docs = this.#getOrCreateTab(tabId).documents;
+
+        // Local-scheme subframes (about:srcdoc, about:blank, data:) have no
+        // hostname of their own, so inherit the parent document's URL.
+        if (!URL.parse(url)?.hostname && docs.has(parentDocumentId))
+            url = docs.get(parentDocumentId);
+
+        docs.set(documentId, url);
         this.#saveState();
     }
 
     async hasDocument(tabId, documentId) {
         await this.#state;
         return this.#tabs.get(tabId)?.documents.has(documentId) ?? false;
+    }
+
+    // Resolve tabless reports (ServiceWorker / SharedWorker, where tabId is -1)
+    // to any open tabs that currently have a committed document on that origin.
+    async findTabsForOrigin(origin) {
+        await this.#state;
+        if (!origin || origin === "null")
+            return [];
+        let matching = [];
+        for (let [tabId, tab] of this.#tabs) {
+            for (let url of tab.documents.values()) {
+                if (URL.parse(url)?.origin === origin) {
+                    matching.push(tabId);
+                    break;
+                }
+            }
+        }
+        return matching;
     }
 
     async addServerPolicy(tabId, url, header) {

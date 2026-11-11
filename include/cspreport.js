@@ -1,6 +1,7 @@
 // Parser for intercepted csp_report requests.
 export default class CspReport {
     initiator;
+    documentId;
     report;
     blockeduri;
 
@@ -37,6 +38,7 @@ export default class CspReport {
 
         // Convert page into a URL object.
         this.initiator = this.#decodeReportUri(details.initiator);
+        this.documentId = details.documentId;
 
         // This might also be a URI, or might be a keyword like "inline".
         this.blockeduri = this.#decodeReportUri(this.report["blocked-uri"]);

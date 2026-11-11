@@ -10,5 +10,18 @@
         "csp_report"
       ]
     }
+  },
+  {
+    "id": 2,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "urlFilter": "||_matrix3.internal/csp-report",
+      "resourceTypes": [
+        "websocket"
+      ]
+    }
   }
 ]

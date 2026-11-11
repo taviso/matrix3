@@ -38,6 +38,29 @@ export default class Policy {
         return directive;
     }
 
+    // Return the effective source list for a fetch directive after walking the
+    // CSP3 fallback chain, or undefined if no governing directive is set.
+    getEffectiveSources(directive) {
+        const fallbacks = {
+            "worker-src": ["worker-src", "child-src", "script-src", "default-src"],
+            "frame-src":  ["frame-src", "child-src", "default-src"],
+        };
+        const chain = fallbacks[directive]
+            ?? (directive.endsWith("-src") ? [directive, "default-src"] : [directive]);
+
+        for (let dir of chain) {
+            if (dir in this.directives)
+                return this.directives[dir];
+        }
+        return undefined;
+    }
+
+    // True when a fetch directive resolves to 'none' (or an empty source list).
+    isDirectiveDisabled(directive) {
+        let sources = this.getEffectiveSources(directive);
+        return sources !== undefined && (sources.length === 0 || sources.includes("'none'"));
+    }
+
     // Initialize from a HTTP header.
     fromHeader(headerString = "") {
         let headerTokens = headerString.trim().split(';').filter(f => f.length);
