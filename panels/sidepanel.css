@@ -223,23 +223,29 @@ textarea#servercsp:empty {
 }
 
 /* Make the origin selector look like tabs */
-div#frames button {
+div#frames > button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: bottom;
     background: transparent;
     border: 1px solid currentColor;
     border-radius: 3px 3px 0 0;
     margin-bottom: -1px;
+}
+
+div#frames > button > span {
     max-width: 16ch;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
-div#frames button.active {
+div#frames > button.active {
     background: Canvas;
     border-bottom-color: Canvas;
 }
 
-div#frames button:not(.active):hover {
+div#frames > button:not(.active):hover {
     background: color-mix(in srgb, transparent, CanvasText 8%);
     cursor: pointer;
 }

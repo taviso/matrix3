@@ -218,8 +218,8 @@ function applyTrustGroup() {
 document.getElementById('applygroup').addEventListener("click", applyTrustGroup);
 
 originList.addEventListener("click", (e) => {
-    let btn = e.target.closest("button[data-value]");
-    if (!btn || e.target !== btn) return;
+    let btn = e.target.closest("button");
+    if (!btn?.dataset.value) return;
     userOrigin = btn.dataset.value;
     utils.callWithLock("report", async () => {
         originList.value = userOrigin;
@@ -537,10 +537,12 @@ async function populateOriginList(preferredDomain, tab) {
 
     for (let [domain, protocol] of domains) {
         let btn = document.createElement("button");
+        let span = document.createElement("span");
         btn.title = domain;
         btn.dataset.value = domain;
         btn.dataset.protocol = protocol;
-        btn.append(domain, unregistersw.cloneNode(true));
+        span.textContent = domain;
+        btn.append(span, unregistersw.cloneNode(true));
         originList.appendChild(btn);
     }
 
