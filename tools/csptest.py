@@ -20,6 +20,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/':
             return self._render(Handler.current_csp)
+        elif self.path == '/reset':
+            Handler.current_csp = ''
+            self.send_response(HTTPStatus.SEE_OTHER)
+            self.send_header('Location', '/')
+            self.end_headers()
+            return
         elif self.path == '/sw.js':
             body = Path('sw.js').read_bytes()
             self.send_response(HTTPStatus.OK)

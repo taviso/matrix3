@@ -199,7 +199,8 @@ div#serverpolicy:not(:has(tbody tr, textarea:not(:empty))) {
     display: none;
 }
 
-table#serversources:not(:has(tbody tr)) {
+table#serversources:not(:has(tbody tr)),
+div#serverpolicy:not(:has(tbody tr)) p {
     display: none;
 }
 

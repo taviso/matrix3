@@ -2,28 +2,35 @@
 
 // The default blank policy you get from new Policy()
 const kDefaultPolicy = {
-    "report-uri": [ "https://_matrix3.internal/csp-report" ],
+    "report-uri": [ "wss://_matrix3.internal/csp-report" ],
 };
+
+// Recognises the prefix of a CSP nonce-source or hash-source value.
+const kNonceOrHashPrefix = /^'(?:nonce-|sha(?:256|384|512)-)/i;
+const kNoncePrefix = /^'nonce-/i;
 
 export default class Policy {
     // Default directives -- override per instance as needed.
     directives = structuredClone(kDefaultPolicy);
 
-    // Server-CSP directives we preserve. Per-document ones need host scope --
-    // they can't merge across siblings in a domain-scoped bucket.
-    static isAllowedPassthruDirective(directive, scope) {
-        switch (directive) {
-            case "upgrade-insecure-requests":
-            case "block-all-mixed-content":
-                return true;
-            case "frame-ancestors":
-            case "form-action":
-            case "require-trusted-types-for":
-            case "trusted-types":
-            case "base-uri":
-                return scope === "host";
-        }
-        return false;
+    static isNonceOrHash(src) {
+        return typeof src === "string" && kNonceOrHashPrefix.test(src);
+    }
+
+    static isNonceOrStrictDynamic(src) {
+        return typeof src === "string" && (kNoncePrefix.test(src) || src === "'strict-dynamic'");
+    }
+
+    // Transform a source token for matrix³'s own appended policy. Nonces,
+    // hashes, and 'strict-dynamic' cannot be emitted in matrix³'s policy
+    // (they would suppress 'unsafe-inline' or host sources) and map to
+    // 'unsafe-inline' while the server's policy enforces the actual nonce/hash.
+    static importableSource(src) {
+        if (!src)
+            return null;
+        if (Policy.isNonceOrHash(src) || src === "'strict-dynamic'")
+            return "'unsafe-inline'";
+        return src;
     }
 
     static collapseDirective(directive) {
@@ -82,6 +89,19 @@ export default class Policy {
             }
 
             this.directives[directiveName] = directive;
+        }
+        return this;
+    }
+
+    // Normalize directive sources for an appended matrix³ policy, translating
+    // any legacy nonce/hash/'strict-dynamic' tokens to 'unsafe-inline'.
+    sanitizeForAppend() {
+        for (let [directive, sources] of Object.entries(this.directives)) {
+            if (directive === "report-uri" || directive === "sandbox")
+                continue;
+            this.directives[directive] = Array.from(
+                new Set(sources.map(s => Policy.importableSource(s)).filter(Boolean))
+            );
         }
         return this;
     }

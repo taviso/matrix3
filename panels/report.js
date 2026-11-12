@@ -45,9 +45,6 @@ let currentServerPolicies = [];
 // frame list temporarily falls back to the top domain.
 let userOrigin;
 
-// Recognises the prefix of a CSP nonce-source or hash-source value.
-const kNonceOrHashPrefix = /^'(?:nonce-|sha(?:256|384|512)-)/;
-
 // Find all origins currently loaded in the tab that fall under the given scope.
 async function getOriginsInScope(scope) {
     let tab = await sidepanel.getActiveTab();
@@ -121,15 +118,6 @@ document.getElementById('accept').addEventListener("click", () => {
 
 document.getElementById('merge').addEventListener("click", applyServerPolicy);
 
-// Transform a server-supplied source for import. Returns null to skip.
-function importableSource(src) {
-    if (!src)
-        return null;
-    if (kNonceOrHashPrefix.test(src) || src === "'strict-dynamic'")
-        return "'unsafe-inline'";
-    return src;
-}
-
 function applyServerSources() {
     let srcs = utils.getTableRowProps(serverTable, "textContent");
     let dirs = utils.getTableColProps(serverTable, "id");
@@ -138,17 +126,26 @@ function applyServerSources() {
     dirs.shift();
 
     for (let src of srcs) {
-        let target = importableSource(src);
+        let target = Policy.importableSource(src);
         if (!target)
             continue;
         for (let dir of dirs) {
             if (!getSourceCheckboxState(src, dir, serverTable.tBodies[0]))
                 continue;
-            let box = findCheckbox(target, dir, true);
-            if (!box)
-                continue;
-            box.checked = true;
-            enforceNoneLeader(box);
+            // In a server CSP, 'nonce-...' and 'strict-dynamic' in script-src
+            // also authorize external <script nonce="..." src="..."> elements,
+            // whereas 'unsafe-inline' only permits inline blocks. Also check
+            // 'self' for script-src so same-origin nonced scripts can load.
+            let targets = (dir === "script-src" && Policy.isNonceOrStrictDynamic(src))
+                ? [target, "'self'"]
+                : [target];
+            for (let t of targets) {
+                let box = findCheckbox(t, dir, true);
+                if (!box)
+                    continue;
+                box.checked = true;
+                enforceNoneLeader(box);
+            }
         }
     }
 
@@ -188,11 +185,14 @@ function applyTrustGroup() {
     group = groups?.[name] ?? {};
 
     for (let [origin, dirs] of Object.entries(group)) {
-        addSourceCheckboxRow(origin);
+        let target = Policy.importableSource(origin);
+        if (!target)
+            continue;
+        addSourceCheckboxRow(target);
         for (let entry of dirs) {
             let enable = !entry.startsWith('!');
             let dir = enable ? entry : entry.slice(1);
-            let box = findCheckbox(origin, dir, true);
+            let box = findCheckbox(target, dir, true);
             if (!box)
                 continue;
             box.checked = enable;
@@ -269,7 +269,6 @@ function buildDefaultDirectivesFragment()
     // Add some default sources.
     addSourceCheckboxRow("'none'", fragment);
     addSourceCheckboxRow("'self'", fragment);
-    addSourceCheckboxRow("'strict-dynamic'", fragment);
     addSourceCheckboxRow("'unsafe-eval'", fragment);
     addSourceCheckboxRow("'wasm-unsafe-eval'", fragment);
     addSourceCheckboxRow("'unsafe-inline'", fragment);
@@ -387,14 +386,14 @@ async function fallbackToFirstParty(container = directivesTable.tBodies[0]) {
     for (let [directive, sources] of Object.entries(policy.directives)) {
         let dir = Policy.collapseDirective(directive);
         if (columns.includes(dir))
-            sources.forEach(src => setSourceCheckboxState(importableSource(src), dir, true, undefined, container));
+            sources.forEach(src => setSourceCheckboxState(Policy.importableSource(src), dir, true, undefined, container));
     }
 }
 
 // Sort sources alphabetically, but with nonce-* / sha*-* values at the end
 // since they're noisy and rarely toggled.
 function compareSourceRows(a, b) {
-    let isHash = l => kNonceOrHashPrefix.test(l);
+    let isHash = l => Policy.isNonceOrHash(l);
     let al = a.cells[0].textContent;
     let bl = b.cells[0].textContent;
     return (isHash(al) - isHash(bl)) || al.localeCompare(bl);
@@ -427,7 +426,7 @@ async function getCurrentRules(hostName, container)
 
         let dir = Policy.collapseDirective(directive);
         if (columns.includes(dir))
-            sources.forEach(src => setSourceCheckboxState(src, dir, true, className, container));
+            sources.forEach(src => setSourceCheckboxState(Policy.importableSource(src), dir, true, className, container));
     }
 }
 
@@ -463,34 +462,10 @@ function setCurrentRules(hostName)
         tab = await tab;
         let srcs = utils.getTableRowProps(directivesTable, "textContent");
         let dirs = utils.getTableColProps(directivesTable, "id");
-        let policy = await RulesManager.getDefaultPolicy();
+        let policy = new Policy();
 
         // Drop the row-title column id.
         dirs.shift();
-
-        // Passthrough security-relevant directives the server set that we don't
-        // manage in the UI (frame-ancestors, trusted-types, etc.).
-        for (let serverPolicy of currentServerPolicies) {
-            for (let d in serverPolicy.directives) {
-                // We can't allow all directives through for domain scope, or
-                // they'll apply to every host on that domain. This is a
-                // tradeoff, rules are far easier for users to manage by domain,
-                // but you have to accept the rules that allow the weakest hosts to
-                // work. It can be configured by users though, via the scope option.
-                if (!Policy.isAllowedPassthruDirective(d, options?.defaultscope)) {
-                    console.debug("report", `dropped directive ${d} for ${hostName}, not allowed in scope`);
-                    continue;
-                }
-                if (policy.directives[d]) {
-                    console.log("report", `duplicate directive ${d} dropped for ${hostName}`);
-                    continue;
-                }
-                policy.directives[d] = serverPolicy.directives[d];
-            }
-        }
-
-        // Reset before write.
-        dirs.forEach(dir => delete policy.directives[dir]);
 
         for (let dir of dirs) {
             let activeSources = srcs.filter(src => getSourceCheckboxState(src, dir));
@@ -515,13 +490,10 @@ function setCurrentRules(hostName)
         let sbx = document.querySelector("input#sandbox-enabled");
         let features = Array.from(document.querySelectorAll("td input.sandbox.allow:checked"), f => f.id);
 
-        // Reset before write -- see NOTES.md "Inherited directives in setCurrentRules".
-        delete policy.directives.sandbox;
         if (sbx.checked)
             policy.directives.sandbox = features;
 
         await RulesManager.addSessionRule(hostName, policy);
-        await populateServerPolicy(undefined, tab);
         await updateButtonStates(tab);
     });
 }
@@ -564,10 +536,8 @@ async function populateOriginList(preferredDomain, tab) {
     originList.value = target;
 }
 
-async function populateServerPolicy(container, tab) {
+async function populateServerPolicy(tab) {
     tab ??= await sidepanel.getActiveTab();
-    let active = RulesManager.getHostRule(originList.value)?.policy
-              ?? await RulesManager.getDefaultPolicy();
     let headers;
     let serverFragment = document.createDocumentFragment();
     let columns = utils.getTableColProps(directivesTable, "id");
@@ -595,14 +565,19 @@ async function populateServerPolicy(container, tab) {
                     srcs = ["'none'"];
                 for (let src of srcs) {
                     if (!sidepanel.isValidSource(src)) {
+                        // Strip path suffixes from server sources (e.g. "example.com/path/"
+                        // or "https://example.com/path"); the server's own CSP still enforces the path.
+                        src = src.includes("://")
+                            ? URL.parse(src)?.origin
+                            : src.split("/", 1).at(0);
+                    }
+                    if (!sidepanel.isValidSource(src)) {
                         console.debug("report", `ignoring invalid or unsupported server source ${src}`);
                         continue;
                     }
                     setSourceCheckboxState(src, dir, true, undefined, serverFragment);
-                    if (kNonceOrHashPrefix.test(src))
-                        addSourceCheckboxRow(src, container);
                 }
-            } else if (!(directive in active.directives)) {
+            } else {
                 passthru.directives[directive] ??= srcs;
             }
         }
@@ -679,7 +654,7 @@ async function refreshTable(domain, tab) {
     delete serverTable.dataset.dirty;
 
     await getCurrentRules(domain, fragment);
-    await populateServerPolicy(fragment, tab);
+    await populateServerPolicy(tab);
     setCurrentViolations(await refreshViolations(domain, tab), fragment);
 
     // Sort the fragment children before appending
@@ -748,7 +723,7 @@ async function handleNotifyUpdate(msg) {
         return;
 
     setCurrentViolations(await refreshViolations(originList.value, tab));
-    await populateServerPolicy(undefined, tab);
+    await populateServerPolicy(tab);
     utils.sortTable(directivesTable, compareSourceRows);
 }
 

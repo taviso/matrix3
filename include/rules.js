@@ -2,11 +2,29 @@ import Policy from '/include/policy.js'
 import Options from '/include/options.js'
 import { MessageTypes } from '/include/commands.js'
 
-// dNR priorities are ordinal: bypass > session > dynamic > static.
-const kStaticPriority  = 1;
-const kDynamicPriority = 2;
-const kSessionPriority = 3;
-const kBypassPriority  = 4;
+// dNR priorities are ordinal. Host rules scale by hostname label count L
+// (e.g. "foo.com" => L=2, "sub.foo.com" => L=3) so a more-specific subdomain's
+// (allow, append) pair always overrides a parent domain's rule across both
+// tiers, while a session rule overrides a dynamic rule for the same host:
+//   1001: tab bypass allow
+//   1000: reporting header removal (base.json)
+//   10*L + 4: session host CSP append
+//   10*L + 3: session host allow override
+//   10*L + 2: dynamic host CSP append
+//   10*L + 1: dynamic host allow override
+//   1: static default CSP append
+const kDynamicPriority        = 2;
+const kSessionPriority        = 4;
+const kOverridePriorityOffset = 1;
+const kLabelPriorityScale     = 10;
+const kMaxPriorityLabels      = 90;
+const kBypassPriority         = 1001;
+
+// Resource types excluded from matrix³ CSP and allow rules (so report
+// blocking rules in base.json are never overridden).
+const kExcludedResourceTypes = [
+    "csp_report", "websocket"
+];
 
 // Sync key recording when we last pushed rules.
 const kLastPushKey = "meta:lastpush";
@@ -14,30 +32,48 @@ const kLastPushKey = "meta:lastpush";
 // A declarativeNetRequest rule (session or dynamic).
 class Rule {
     id;
-    priority;
+    overrideId;
     isSession;
     action = {};
     condition = {};
 
     // rule is a raw JSON DNR rule object from chrome.storage or dNR APIs.
-    constructor(rule, session = false)
+    constructor(rule, session = false, overrideId = undefined)
     {
         this.id = rule?.id;
+        this.overrideId = overrideId;
         this.action.type = "modifyHeaders";
         this.action.responseHeaders = [{
             header: "Content-Security-Policy",
-            operation: "set",
+            operation: "append",
         }];
-        this.condition.resourceTypes = [
-            "main_frame", "sub_frame", "object", "script", "xmlhttprequest"
-        ];
+        this.condition.excludedResourceTypes = [...kExcludedResourceTypes];
         this.condition.urlFilter = rule?.condition?.urlFilter;
-        this.priority = rule?.priority;
         this.isSession = session;
 
         // Normalize the raw CSP value through Policy abstractions.
         this.fromPolicyString(rule?.action?.responseHeaders?.[0]?.value);
     };
+
+    get ids() {
+        return [this.id, this.overrideId].filter(Boolean);
+    }
+
+    // Cap label count at 90 (max priority 904) so host rules can never reach
+    // base.json's reporting header removal (1000) or tab bypass (1001).
+    get priority() {
+        let labels = 1;
+        let tier = kDynamicPriority;
+
+        if (this.host) {
+            labels = Math.min(this.host.split(".").length, kMaxPriorityLabels);
+        }
+        if (this.isSession) {
+            tier = kSessionPriority;
+        }
+
+        return labels * kLabelPriorityScale + tier;
+    }
 
     set host(host) {
         this.condition.urlFilter = "||" + host + "^";
@@ -45,14 +81,6 @@ class Rule {
 
     get host() {
         return this.condition.urlFilter?.slice(2, -1);
-    }
-
-    set tabId(tabId) {
-        this.condition.tabIds = [tabId];
-    }
-
-    get tabId() {
-        return this.condition.tabIds?.[0];
     }
 
     get policy() {
@@ -69,7 +97,7 @@ class Rule {
     }
 
     fromPolicyString(headerString) {
-        this.fromPolicy(new Policy().fromHeader(headerString));
+        this.fromPolicy(new Policy().fromHeader(headerString).sanitizeForAppend());
     }
 
     toRule() {
@@ -79,6 +107,29 @@ class Rule {
             condition: this.condition,
             priority: this.priority,
         };
+    }
+
+    // In Chrome dNR, "set" only runs the highest-priority matching rule,
+    // whereas "append" runs *every* matching rule across all priorities.
+    // Without an override, a host rule would append its CSP alongside the
+    // static default (e.g. firstparty.json), and the browser would enforce the
+    // intersection of both -- making it impossible to loosen the default policy.
+    //
+    // A matching "allow" rule at priority P-1 tells Chrome to ignore all
+    // modifyHeaders rules from this extension with priority <= P-1 (the static
+    // default, parent domains, or a dynamic rule when a session rule exists),
+    // so only this rule's CSP at priority P is appended.
+    toOverrideRule() {
+        return {
+            id: this.overrideId,
+            action: { type: "allow" },
+            condition: structuredClone(this.condition),
+            priority: this.priority - kOverridePriorityOffset,
+        };
+    }
+
+    toRules() {
+        return [this.toOverrideRule(), this.toRule()];
     }
 }
 
@@ -119,7 +170,7 @@ class Ruleset {
             if (response.ok != true)
                 return false;
 
-            let [data] = await response.json();
+            let data = await response.json();
 
             Ruleset.#cache.set(this.url, { json: data });
             return true;
@@ -141,10 +192,12 @@ class Ruleset {
         if (!await this.#load())
             return policy;
 
-        const csp = this.json.action.responseHeaders?.find(r => r.header == "Content-Security-Policy");
+        const csp = this.json
+            .flatMap(rule => rule.action?.responseHeaders ?? [])
+            .find(r => r.header == "Content-Security-Policy");
 
-        // Parse and store the policy object in the cache if it's a 'set' operation.
-        if (csp?.operation == "set") {
+        // Parse and store the policy object in the cache if it's an 'append' operation.
+        if (csp?.operation == "append") {
             policy.fromHeader(csp.value);
         }
 
@@ -187,9 +240,19 @@ export default class Rules {
         this.#rules = new Map();
         this.#exempt = new Map();
 
-        dynamic.forEach(r => this.#setRule(new Rule(r)));
-        session.filter(r => r.condition.urlFilter)
-            .forEach(r => this.#setRule(new Rule(r, true)));
+        let dynamicOverrides = new Map(
+            dynamic.filter(r => r.action.type === "allow" && r.condition.urlFilter)
+                .map(r => [r.condition.urlFilter, r.id])
+        );
+        let sessionOverrides = new Map(
+            session.filter(r => r.action.type === "allow" && r.condition.urlFilter)
+                .map(r => [r.condition.urlFilter, r.id])
+        );
+
+        dynamic.filter(r => r.action.type === "modifyHeaders" && r.condition.urlFilter)
+            .forEach(r => this.#setRule(new Rule(r, false, dynamicOverrides.get(r.condition.urlFilter))));
+        session.filter(r => r.action.type === "modifyHeaders" && r.condition.urlFilter)
+            .forEach(r => this.#setRule(new Rule(r, true, sessionOverrides.get(r.condition.urlFilter))));
         session.filter(r => r.condition.tabIds)
             .forEach(r => r.condition.tabIds.forEach(t => this.#exempt.set(t, r.id)));
 
@@ -204,10 +267,10 @@ export default class Rules {
             await ruleset.toPolicy();
         }
 
-        // Collect all the rule ids currently refined.
+        // Collect all live rule IDs across both buckets (including overrides and exemptions).
         let dynamicAndSessionIds = [
-            ...this.getRules().map(r => r.id),
-            ...this.#exempt.values(),
+            ...dynamic.map(r => r.id),
+            ...session.map(r => r.id),
         ];
 
         // Find the next available id to assign to new rules.
@@ -302,6 +365,7 @@ export default class Rules {
     // is to use a wss: report-uri instead, which should bypass SW interception
     // while still reaching webRequest.
     #setReportUri(policy) {
+        delete policy.directives["report-to"];
         policy.directives["report-uri"] = [
             policy.isDirectiveDisabled("worker-src")
                 ? chrome.runtime.getURL("csp-report")
@@ -309,35 +373,32 @@ export default class Rules {
         ];
     }
 
-    // Install rulePolicy as a session rule for hostName, replacing any prior
-    // session. Any existing dynamic stays put; the session's priority is
-    // bumped above it so the session wins at runtime, and Abandon can then
-    // delete the session to restore the dynamic.
+    // Install rulePolicy as a session (allow, append) rule pair for hostName,
+    // replacing any prior session pair. Any existing dynamic pair stays put at
+    // its lower tier offset (10L + 1..2 vs session's 10L + 3..4) so the session
+    // pair suppresses it at runtime, and Abandon can delete the session pair to
+    // restore the dynamic pair.
     async addSessionRule(hostName, rulePolicy) {
         let rule = new Rule(null, true);
         let oldSession = this.#findSessionForHost(hostName);
-        let oldDynamic = this.#findDynamicForHost(hostName);
 
         this.#setReportUri(rulePolicy);
 
         rule.host = hostName;
-        rule.priority = kDynamicPriority;
         rule.fromPolicy(rulePolicy);
 
-        // The new session rule should take priority over any old dynamic rule, the
-        // user can test it and then commit it.
-        if (oldDynamic)
-            rule.priority = oldDynamic.priority + 1;
-
-        // Reuse the old session rule's ID so toggling checkboxes updates it in place.
-        if (oldSession)
+        // Reuse the old session rule's IDs so toggling checkboxes updates it in place.
+        if (oldSession?.id && oldSession?.overrideId) {
             rule.id = oldSession.id;
-        else
+            rule.overrideId = oldSession.overrideId;
+        } else {
+            rule.overrideId = this.#getNextId();
             rule.id = this.#getNextId();
+        }
 
         await this.#updateSessionRules({
-            removeRuleIds: oldSession ? [oldSession.id] : [],
-            addRules: [ rule.toRule() ],
+            removeRuleIds: oldSession ? oldSession.ids : [],
+            addRules: rule.toRules(),
         });
 
         this.#setRule(rule);
@@ -367,7 +428,7 @@ export default class Rules {
 
     async delSessionRule(rule) {
         await this.#updateSessionRules({
-            removeRuleIds: [rule.id],
+            removeRuleIds: rule.ids,
             addRules: []
         });
         this.#deleteRule(rule);
@@ -375,7 +436,7 @@ export default class Rules {
 
     async delDynamicRule(rule) {
         await this.#updateDynamicRules({
-            removeRuleIds: [rule.id],
+            removeRuleIds: rule.ids,
             addRules: []
         });
         this.#deleteRule(rule);
@@ -404,17 +465,52 @@ export default class Rules {
         // Reset our internal ID counter and re-assign IDs to all incoming rules
         // to guarantee a collision-free set for the atomic swap.
         this.#id = 0;
-        session.forEach(r => r.id = this.#getNextId());
-        dynamic.forEach(r => r.id = this.#getNextId());
+
+        let buildPair = (rawRule, isSession) => {
+            let rule = new Rule(rawRule, isSession, this.#getNextId());
+            let policy = rule.policy;
+            this.#setReportUri(policy);
+            rule.fromPolicy(policy);
+            rule.id = this.#getNextId();
+            return rule.toRules();
+        };
+
+        let sessionHostRules = new Map();
+        let sessionExemptRules = [];
+        for (let r of session) {
+            if (r.condition?.tabIds) {
+                let exempt = structuredClone(r);
+                exempt.id = this.#getNextId();
+                exempt.priority = kBypassPriority;
+                delete exempt.condition.resourceTypes;
+                exempt.condition.excludedResourceTypes = [...kExcludedResourceTypes];
+                sessionExemptRules.push(exempt);
+            } else if (r.action?.type === "modifyHeaders" && r.condition?.urlFilter) {
+                sessionHostRules.set(r.condition.urlFilter, r);
+            }
+        }
+
+        let dynamicHostRules = new Map();
+        for (let r of dynamic) {
+            if (r.action?.type === "modifyHeaders" && r.condition?.urlFilter) {
+                dynamicHostRules.set(r.condition.urlFilter, r);
+            }
+        }
+
+        let addSession = [
+            ...Array.from(sessionHostRules.values(), r => buildPair(r, true)).flat(),
+            ...sessionExemptRules,
+        ];
+        let addDynamic = Array.from(dynamicHostRules.values(), r => buildPair(r, false)).flat();
 
         try {
             await this.#updateSessionRules({
                 removeRuleIds: removeSessionIds,
-                addRules: session,
+                addRules: addSession,
             });
             await this.#updateDynamicRules({
                 removeRuleIds: removeDynamicIds,
-                addRules: dynamic,
+                addRules: addDynamic,
             });
         } finally {
             // Refresh the mirror even on a partial failure (e.g. dNR rule cap).
@@ -475,6 +571,7 @@ export default class Rules {
 
             // report-uri is per-device; pull re-derives it, so don't store it.
             delete policy.directives["report-uri"];
+            delete policy.directives["report-to"];
 
             toSet[`rule:${rule.host}`] = { policy: policy.toHeader() };
         }
@@ -542,15 +639,10 @@ export default class Rules {
 
         for (let key of cloudRules) {
             let rule = new Rule();
-            let policy = new Policy().fromHeader(storage[key].policy);
-
-            // Re-derive report-uri for this device rather than trusting storage.
-            this.#setReportUri(policy);
 
             // key is the storage key, so strip the "rule:" prefix.
             rule.host = key.slice(key.indexOf(":") + 1);
-            rule.priority = kDynamicPriority;
-            rule.fromPolicy(policy);
+            rule.fromPolicyString(storage[key].policy);
             mergedMap.set(rule.host, rule.toRule());
         }
 
@@ -597,42 +689,49 @@ export default class Rules {
         let session = this.#findSessionForHost(hostName);
         if (!rule || session)
             return;
+        let next = new Rule(rule.toRule(), true);
+        next.overrideId = this.#getNextId();
+        next.id = this.#getNextId();
         await this.#updateSessionRules({
             removeRuleIds: [],
-            addRules: [rule.toRule()],
+            addRules: next.toRules(),
         });
-        await this.#updateDynamicRules({
-            removeRuleIds: [rule.id],
-            addRules: [],
-        });
+        try {
+            await this.#updateDynamicRules({
+                removeRuleIds: rule.ids,
+                addRules: [],
+            });
+        } catch (e) {
+            await this.#updateSessionRules({
+                removeRuleIds: next.ids,
+                addRules: [],
+            });
+            throw e;
+        }
         this.#deleteRule(rule);
-        rule.isSession = true;
-        this.#setRule(rule);
+        this.#setRule(next);
     }
 
     // Promote the host's session rule into a dynamic rule, replacing any
-    // existing dynamic. Priority is demoted back to the prior dynamic's
-    // level so commits don't drift priorities upward.
+    // existing dynamic. Priority is computed deterministically for the dynamic tier.
     async commitSessionRulesForHost(hostName) {
         let rule = this.#findSessionForHost(hostName);
         let prev = this.#findDynamicForHost(hostName);
         if (!rule)
             return;
-        if (prev)
-            rule.priority = prev.priority;
+        let next = new Rule(rule.toRule(), false);
+        next.overrideId = this.#getNextId();
+        next.id = this.#getNextId();
         await this.#updateDynamicRules({
-            removeRuleIds: prev ? [prev.id] : [],
-            addRules: [rule.toRule()],
+            removeRuleIds: prev ? prev.ids : [],
+            addRules: next.toRules(),
         });
+        this.#setRule(next);
         await this.#updateSessionRules({
-            removeRuleIds: [rule.id],
+            removeRuleIds: rule.ids,
             addRules: [],
         });
         this.#deleteRule(rule);
-        rule.isSession = false;
-        // #setRule overwrites entry.dynamic; an explicit #deleteRule(prev)
-        // afterwards would clobber the rule we just set (same host).
-        this.#setRule(rule);
     }
 
     // Rule for matching host, preferring session over dynamic.
@@ -656,18 +755,23 @@ export default class Rules {
         if (!tabId || this.#exempt.has(tabId))
             return;
 
-        let rule = new Rule(null, true);
-        rule.id = this.#getNextId();
-        rule.priority = kBypassPriority;
-        rule.action = { type: "allow" };
-        rule.tabId = tabId;
+        let id = this.#getNextId();
+        let rule = {
+            id,
+            priority: kBypassPriority,
+            action: { type: "allow" },
+            condition: {
+                excludedResourceTypes: [...kExcludedResourceTypes],
+                tabIds: [tabId],
+            },
+        };
 
         await this.#updateSessionRules({
             removeRuleIds: [],
-            addRules: [rule.toRule()],
+            addRules: [rule],
         });
 
-        this.#exempt.set(tabId, rule.id);
+        this.#exempt.set(tabId, id);
     }
 
     async delTabExemption(tabId) {

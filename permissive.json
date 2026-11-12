@@ -20,12 +20,9 @@
       ]
     },
     "condition": {
-      "resourceTypes": [
-        "main_frame",
-        "sub_frame",
-        "object",
-        "script",
-        "xmlhttprequest"
+      "excludedResourceTypes": [
+        "csp_report",
+        "websocket"
       ]
     }
   }

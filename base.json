@@ -23,5 +23,32 @@
         "websocket"
       ]
     }
+  },
+  {
+    "id": 3,
+    "priority": 1000,
+    "action": {
+      "type": "modifyHeaders",
+      "responseHeaders": [
+        {
+          "header": "Reporting-Endpoints",
+          "operation": "remove"
+        },
+        {
+          "header": "Report-To",
+          "operation": "remove"
+        },
+        {
+          "header": "Content-Security-Policy-Report-Only",
+          "operation": "remove"
+        }
+      ]
+    },
+    "condition": {
+      "excludedResourceTypes": [
+        "csp_report",
+        "websocket"
+      ]
+    }
   }
 ]

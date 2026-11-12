@@ -6,31 +6,16 @@
       "type": "modifyHeaders",
       "responseHeaders": [
         {
-          "header": "Reporting-Endpoints",
-          "operation": "remove"
-        },
-        {
-          "header": "Report-To",
-          "operation": "remove"
-        },
-        {
-          "header": "Content-Security-Policy-Report-Only",
-          "operation": "remove"
-        },
-        {
           "header": "Content-Security-Policy",
-          "operation": "set",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; media-src 'self' blob:; connect-src 'self'; worker-src 'none'; report-uri https://_matrix3.internal/csp-report"
+          "operation": "append",
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; media-src 'self' blob:; connect-src 'self'; worker-src 'none'; report-uri wss://_matrix3.internal/csp-report"
         }
       ]
     },
     "condition": {
-      "resourceTypes": [
-        "main_frame",
-        "sub_frame",
-        "object",
-        "script",
-        "xmlhttprequest"
+      "excludedResourceTypes": [
+        "csp_report",
+        "websocket"
       ]
     }
   }

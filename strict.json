@@ -6,31 +6,16 @@
       "type": "modifyHeaders",
       "responseHeaders": [
         {
-          "header": "Reporting-Endpoints",
-          "operation": "remove"
-        },
-        {
-          "header": "Report-To",
-          "operation": "remove"
-        },
-        {
-          "header": "Content-Security-Policy-Report-Only",
-          "operation": "remove"
-        },
-        {
           "header": "Content-Security-Policy",
-          "operation": "set",
-          "value": "default-src 'none'; style-src 'self'; img-src 'self'; report-uri https://_matrix3.internal/csp-report"
+          "operation": "append",
+          "value": "default-src 'none'; style-src 'self'; img-src 'self'; report-uri wss://_matrix3.internal/csp-report"
         }
       ]
     },
     "condition": {
-      "resourceTypes": [
-        "main_frame",
-        "sub_frame",
-        "object",
-        "script",
-        "xmlhttprequest"
+      "excludedResourceTypes": [
+        "csp_report",
+        "websocket"
       ]
     }
   }
