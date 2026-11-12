@@ -24,11 +24,11 @@ async function applyStoredOptions() {
 
 chrome.runtime.onStartup.addListener(applyStoredOptions);
 chrome.runtime.onInstalled.addListener(async (details) => {
-    await applyStoredOptions();
     if (details.reason === "update") {
         let rules = new Rules();
         await rules.replaceAllRules(null, null);
     }
+    await applyStoredOptions();
 });
 Options.addUpdateListener(applyStoredOptions);
 

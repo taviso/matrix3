@@ -270,7 +270,7 @@ export default class ViolationTracker {
     async addServiceWorker(url) {
         await this.#state;
         let u = URL.parse(url);
-        if (!u?.hostname)
+        if (u?.protocol !== "http:" && u?.protocol !== "https:")
             return false;
         let domain = await psl.getScopedDomain(u.hostname);
         if (this.#workers.has(domain))
