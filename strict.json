@@ -8,7 +8,7 @@
         {
           "header": "Content-Security-Policy",
           "operation": "append",
-          "value": "default-src 'none'; style-src 'self'; img-src 'self'; report-uri wss://_matrix3.internal/csp-report"
+          "value": "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; report-uri wss://_matrix3.internal/csp-report"
         }
       ]
     },
