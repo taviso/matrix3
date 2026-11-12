@@ -46,33 +46,18 @@ let currentServerPolicies = [];
 // frame list temporarily falls back to the top domain.
 let userOrigin;
 
-// Find all origins currently loaded in the tab that fall under the given scope.
-async function getOriginsInScope(scope) {
-    let tab = await sidepanel.getActiveTab();
-    let frames = await chrome.webNavigation.getAllFrames({tabId: tab.id}).catch(() => []) ?? [];
-    let origins = new Set([`https://${scope}`]);
-
-    for (let f of frames) {
-        let u = URL.parse(f.url);
-        if (!u || u.origin === "null")
-            continue;
-        if (await psl.getScopedDomain(u.hostname) === scope) {
-            origins.add(u.origin);
-        }
-    }
-    return Array.from(origins);
-}
-
 // Clear Service Workers and caches for all origins under the given scope.
 async function unregisterServiceWorker(domain) {
-    await chrome.browsingData.remove(
-        { origins: await getOriginsInScope(domain) },
-        { cache: true, cacheStorage: true, serviceWorkers: true }
-    ).catch(e => console.warn("report", `failed to clear ${domain} browsing data`, e));
-    await chrome.runtime.sendMessage({
+    let origins = await chrome.runtime.sendMessage({
         command: MessageTypes.DEL_WORKER,
            data: { domain }
-    }).catch(() => {});
+    }).catch(() => []) ?? [];
+    if (!origins.length)
+        return;
+    await chrome.browsingData.remove(
+        { origins },
+        { cache: true, cacheStorage: true, serviceWorkers: true }
+    ).catch(e => console.warn("report", `failed to clear ${domain} browsing data`, e));
 }
 
 // Handle the main report buttons.

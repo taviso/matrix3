@@ -272,23 +272,37 @@ export default class ViolationTracker {
         let u = URL.parse(url);
         if (u?.protocol !== "http:" && u?.protocol !== "https:")
             return false;
-        let domain = await psl.getScopedDomain(u.hostname);
-        if (this.#workers.has(domain))
+        if (this.#workers.has(u.origin))
             return false;
-        this.#workers.add(domain);
+        this.#workers.add(u.origin);
         this.#saveState();
         return true;
     }
 
     async delServiceWorker(domain) {
         await this.#state;
-        if (this.#workers.delete(domain))
+        let removed = [];
+        for (let origin of this.#workers) {
+            let u = URL.parse(origin);
+            if (u?.hostname && await psl.getScopedDomain(u.hostname) === domain) {
+                this.#workers.delete(origin);
+                removed.push(origin);
+            }
+        }
+        if (removed.length)
             this.#saveState();
+        return removed;
     }
 
     async getServiceWorkers() {
         await this.#state;
-        return Array.from(this.#workers);
+        let domains = new Set();
+        for (let origin of this.#workers) {
+            let u = URL.parse(origin);
+            if (u?.hostname)
+                domains.add(await psl.getScopedDomain(u.hostname));
+        }
+        return Array.from(domains);
     }
 
 }

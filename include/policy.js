@@ -99,9 +99,10 @@ export default class Policy {
         for (let [directive, sources] of Object.entries(this.directives)) {
             if (directive === "report-uri" || directive === "sandbox")
                 continue;
-            this.directives[directive] = Array.from(
-                new Set(sources.map(s => Policy.importableSource(s)).filter(Boolean))
-            );
+            let mapped = sources.map(s => Policy.importableSource(s)).filter(Boolean);
+            if (directive === "script-src" && sources.some(s => Policy.isNonceOrStrictDynamic(s)))
+                mapped.push("'self'");
+            this.directives[directive] = Array.from(new Set(mapped));
         }
         return this;
     }
