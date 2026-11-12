@@ -138,6 +138,31 @@ chrome.webRequest.onBeforeRequest.addListener(async (details) => {
     }, [ "requestBody" ]
 );
 
+// Chrome has no extension API to query if an origin has a Service Worker
+// registered, so we infer it from network activity:
+//   1. Requests made by a Service Worker (or by Chrome fetching/updating the
+//      SW script itself) run outside any tab, so they have tabId === -1.
+//   2. When a Service Worker intercepts a frame navigation via respondWith(),
+//      the response comes from neither a network socket (no details.ip) nor
+//      the browser's HTTP cache (details.fromCache is false).
+chrome.webRequest.onCompleted.addListener(async (details) => {
+        let isFrame = details.type === "main_frame" || details.type === "sub_frame";
+        let origin = details.tabId === -1
+            ? details.initiator
+            : (isFrame && !details.ip && !details.fromCache && details.url);
+
+        if (origin && await tracker.addServiceWorker(origin)) {
+            chrome.runtime.sendMessage({
+                command: MessageTypes.NOTIFY_UPDATE,
+                   data: { id: details.tabId }
+            }).catch(() => {});
+        }
+    }, {
+        types: [ "main_frame", "sub_frame", "script", "xmlhttprequest" ],
+         urls: [ "http://*/*", "https://*/*" ]
+    }
+);
+
 // Record each frame's documentId at commit time. resetTab clears them
 // alongside everything else, so a top-frame navigation wipes the whole tree.
 chrome.webNavigation.onCommitted.addListener((details) => {

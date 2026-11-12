@@ -59,20 +59,24 @@ class Tab {
 
 export default class ViolationTracker {
     #tabs;
+    #workers;
     #state;
     #timer;
 
     constructor () {
         this.#tabs = new Map();
+        this.#workers = new Set();
         this.#state = this.#loadState();
     }
 
     async #loadState() {
-        let { tabs = {} } = await chrome.storage.session.get("tabs")
+        let { tabs = {}, workers = [] } = await chrome.storage.session.get(["tabs", "workers"])
             .catch(e => (console.warn("tracker", "failed to load session state", e), {}));
         console.debug("tracker", `restoring ${Object.keys(tabs).length} tabs from session storage`, tabs);
         for (let [id, val] of Object.entries(tabs))
             this.#tabs.set(Number(id), new Tab().deserialize(val));
+        for (let domain of workers)
+            this.#workers.add(domain);
     }
 
     // MV3 service workers terminate after ~30s idle, so we backup our working
@@ -82,8 +86,9 @@ export default class ViolationTracker {
         let tabs = Object.fromEntries(
             Array.from(this.#tabs, ([id, tab]) => [id, tab.serialize()])
         );
+        let workers = Array.from(this.#workers);
         console.debug("tracker", `saving ${Object.keys(tabs).length} tabs to session storage`, tabs);
-        chrome.storage.session.set({ tabs })
+        chrome.storage.session.set({ tabs, workers })
             .catch(e => console.warn("tracker", "failed to save session state", e));
     };
 
@@ -260,6 +265,30 @@ export default class ViolationTracker {
         return Object.fromEntries(
             Object.entries(bucket).map(([key, value]) => [key, Array.from(value)])
         );
+    }
+
+    async addServiceWorker(url) {
+        await this.#state;
+        let u = URL.parse(url);
+        if (!u?.hostname)
+            return false;
+        let domain = await psl.getScopedDomain(u.hostname);
+        if (this.#workers.has(domain))
+            return false;
+        this.#workers.add(domain);
+        this.#saveState();
+        return true;
+    }
+
+    async delServiceWorker(domain) {
+        await this.#state;
+        if (this.#workers.delete(domain))
+            this.#saveState();
+    }
+
+    async getServiceWorkers() {
+        await this.#state;
+        return Array.from(this.#workers);
     }
 
 }

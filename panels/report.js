@@ -6,7 +6,6 @@ import Policy from '/include/policy.js'
 import { MessageTypes } from '/include/commands.js'
 
 let RulesManager = sidepanel.RulesManager;
-let options = await Options.get();
 let groups = await Options.getGroups();
 
 // Attach tooltips to the static sandbox checkboxes.
@@ -24,6 +23,8 @@ const sandboxTable = document.querySelector("table#sandbox")
 const serverTable = document.querySelector("table#serversources")
 
 const originList = document.querySelector("div#frames")
+const unregistersw = document.querySelector("button.unregistersw")
+unregistersw.remove();
 
 Object.defineProperties(originList, {
     value: {
@@ -62,25 +63,35 @@ async function getOriginsInScope(scope) {
     return Array.from(origins);
 }
 
+// Clear Service Workers and caches for all origins under the given scope.
+async function unregisterServiceWorker(domain) {
+    await chrome.browsingData.remove(
+        { origins: await getOriginsInScope(domain) },
+        { cache: true, cacheStorage: true, serviceWorkers: true }
+    ).catch(e => console.warn("report", `failed to clear ${domain} browsing data`, e));
+    await chrome.runtime.sendMessage({
+        command: MessageTypes.DEL_WORKER,
+           data: { domain }
+    }).catch(() => {});
+}
+
 // Handle the main report buttons.
 document.body.addEventListener('click', async (e) => {
-    const host = originList.value;
+    const host = e.target.parentElement?.dataset.value ?? originList.value;
 
     if (e.target.tagName !== 'BUTTON') return;
 
-    switch (e.target.id) {
+    switch (e.target.id || e.target.className) {
         case 'commit':
             await RulesManager.commitSessionRulesForHost(host);
             break;
         case 'reset':
             if (!await utils.confirmAction(`Remove all session and dynamic rules for ${host}?`)) return;
             await RulesManager.resetHostRules(host);
-            if (options?.unregistersw) {
-                await chrome.browsingData.remove(
-                    { origins: await getOriginsInScope(host) },
-                    { cache: true, cacheStorage: true, serviceWorkers: true }
-                ).catch(e => console.warn("report", `failed to clear ${host} browsing data`, e));
-            }
+            break;
+        case 'unregistersw':
+            if (!await utils.confirmAction(`Unregister Service Worker and clear cache for ${host}?`)) return;
+            await unregisterServiceWorker(host);
             break;
         case 'abandon':
             if (!await utils.confirmAction(`Discard session changes for ${host}?`)) return;
@@ -207,8 +218,8 @@ function applyTrustGroup() {
 document.getElementById('applygroup').addEventListener("click", applyTrustGroup);
 
 originList.addEventListener("click", (e) => {
-    let btn = e.target.closest("button");
-    if (!btn) return;
+    let btn = e.target.closest("button[data-value]");
+    if (!btn || e.target !== btn) return;
     userOrigin = btn.dataset.value;
     utils.callWithLock("report", async () => {
         originList.value = userOrigin;
@@ -526,10 +537,10 @@ async function populateOriginList(preferredDomain, tab) {
 
     for (let [domain, protocol] of domains) {
         let btn = document.createElement("button");
-        btn.textContent = domain;
         btn.title = domain;
         btn.dataset.value = domain;
         btn.dataset.protocol = protocol;
+        btn.append(domain, unregistersw.cloneNode(true));
         originList.appendChild(btn);
     }
 
@@ -638,11 +649,17 @@ async function updateButtonStates(tab) {
     let rules = RulesManager.getRules().filter(r => r.host === host);
     let hasSession = rules.some(r => r.isSession);
     let hasDynamic = rules.some(r => !r.isSession);
+    let workers = await chrome.runtime.sendMessage({
+        command: MessageTypes.REQ_WORKERS
+    }).catch(() => []) ?? [];
     document.getElementById('commit').disabled = !hasSession;
     document.getElementById('abandon').disabled = !hasSession;
     document.getElementById('uncommit').disabled = !hasDynamic || hasSession;
     document.getElementById('reset').disabled = !hasSession && !hasDynamic;
     document.getElementById('resume').disabled = !RulesManager.isTabExempt(tab?.id);
+    for (let btn of originList.querySelectorAll("button[data-value]")) {
+        btn.querySelector("button.unregistersw").disabled = !workers.includes(btn.dataset.value);
+    }
 }
 
 async function refreshTable(domain, tab) {
@@ -718,12 +735,13 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
 async function handleNotifyUpdate(msg) {
     let tab = await sidepanel.getActiveTab();
 
-    // Ignore updates for tabs we aren't viewing.
-    if (msg.data?.id !== tab?.id)
+    // Ignore updates for tabs we aren't viewing (tabId -1 is a Service Worker event).
+    if (msg.data?.id !== -1 && msg.data?.id !== tab?.id)
         return;
 
     setCurrentViolations(await refreshViolations(originList.value, tab));
     await populateServerPolicy(tab);
+    await updateButtonStates(tab);
     utils.sortTable(directivesTable, compareSourceRows);
 }
 

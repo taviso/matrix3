@@ -16,6 +16,12 @@ export default class RequestServer {
             case MessageTypes.REQ_HEADERS:
                 this.tracker.getServerPolicy(request.data.id, request.data.domain).then(sendResponse);
                 return true;
+            case MessageTypes.REQ_WORKERS:
+                this.tracker.getServiceWorkers().then(sendResponse);
+                return true;
+            case MessageTypes.DEL_WORKER:
+                this.tracker.delServiceWorker(request.data.domain).then(sendResponse);
+                return true;
         }
     }
 }

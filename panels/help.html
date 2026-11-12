@@ -60,6 +60,15 @@ permissions of the active website. If the page embeds frames from other
 <abbr title="The domain or hostname of a website (e.g. example.com)">origins</abbr>,
 each origin appears as a tab above the table.
 </p>
+<h3>Service Workers</h3>
+<p>
+<abbr title="A persistent background script installed by a website that can intercept and cache network requests">Service Workers</abbr>
+can sometimes cause confusing results. For example, a Service
+Worker registered <i>before</i> a policy change might appear to ignore it. When
+a Service Worker is active for an origin, a 🔧 icon appears on its
+tab; click it to unregister the Service Worker. When the worker is registered
+again, the latest policy will apply.
+</p>
 <h3>Session and Dynamic Rules</h3>
 <p>
 Toggling a checkbox in the <a href="report.html">Report</a> panel creates a
@@ -268,13 +277,6 @@ CSP violation.
 <p>
 Asks for confirmation before destructive actions such as resetting rules or
 deleting groups.
-</p>
-<h3>Unregister Service Workers on Reset</h3>
-<p>
-Service workers can complicate policy enforcement, so it's a good idea to
-unregister them if you're tightening a policy. This option unregisters service
-workers for the selected host when clicking <b>Reset</b>, preventing cached
-workers from causing confusing results.
 </p>
 <h3>Default Scope</h3>
 <p>

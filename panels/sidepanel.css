@@ -133,8 +133,18 @@ body.show-advanced :is(col, th, td, tr).advanced {
 button#commit:has(+ button#uncommit:not(:disabled)),
 button#uncommit:disabled,
 button#disable:has(+ button#resume:not(:disabled)),
-button#resume:disabled {
+button#resume:disabled,
+div#frames button.unregistersw:disabled {
     display: none;
+}
+
+div#frames button.unregistersw {
+    min-width: unset;
+    border: none;
+    background: none;
+    margin: 0 0 0 0.2em;
+    padding: 0;
+    cursor: pointer;
 }
 
 button#resume {
