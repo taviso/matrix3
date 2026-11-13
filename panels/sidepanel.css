@@ -288,7 +288,6 @@ span.directive {
 
 span.directive.disabled {
     filter: grayscale(1);
-    opacity: 0.75;
 }
 
 span.directive.unused {
