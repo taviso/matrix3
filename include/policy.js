@@ -5,6 +5,26 @@ const kDefaultPolicy = {
     "report-uri": [ "wss://_matrix3.internal/csp-report" ],
 };
 
+// Directives managed by matrix³; any other directives (e.g. legacy passthrough
+// directives like block-all-mixed-content, frame-ancestors, or trusted-types)
+// are left to the server's own CSP header and stripped from appended rules.
+const kManagedDirectives = new Set([
+    "default-src",
+    "script-src",
+    "style-src",
+    "img-src",
+    "frame-src",
+    "font-src",
+    "media-src",
+    "connect-src",
+    "worker-src",
+    "child-src",
+    "manifest-src",
+    "object-src",
+    "sandbox",
+    "report-uri",
+]);
+
 // Recognises the prefix of a CSP nonce-source or hash-source value.
 const kNonceOrHashPrefix = /^'(?:nonce-|sha(?:256|384|512)-)/i;
 const kNoncePrefix = /^'nonce-/i;
@@ -93,10 +113,15 @@ export default class Policy {
         return this;
     }
 
-    // Normalize directive sources for an appended matrix³ policy, translating
-    // any legacy nonce/hash/'strict-dynamic' tokens to 'unsafe-inline'.
+    // Normalize directive sources for an appended matrix³ policy, stripping
+    // unmanaged passthrough directives and translating any legacy
+    // nonce/hash/'strict-dynamic' tokens to 'unsafe-inline'.
     sanitizeForAppend() {
         for (let [directive, sources] of Object.entries(this.directives)) {
+            if (!kManagedDirectives.has(directive)) {
+                delete this.directives[directive];
+                continue;
+            }
             if (directive === "report-uri" || directive === "sandbox")
                 continue;
             let mapped = sources.map(s => Policy.importableSource(s)).filter(Boolean);
