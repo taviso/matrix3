@@ -1,22 +1,68 @@
 <!doctype html>
-<html>
-<body style="font-family:sans-serif;margin:8px">
-frame <button id="sw" type="button">register sw</button> <span id="out"></span>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<title>Subframe</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="frame-view">
+<strong id="frame-label">frame</strong>
+<span id="frame-script" class="badge blocked">script: blocked</span>
+<button id="sw" type="button">Register SW</button>
+<span id="out" class="badge">ready</span>
 <script>
-document.write('(script working) ');
+const scriptBadge = document.getElementById('frame-script');
+scriptBadge.textContent = 'script: allowed';
+scriptBadge.className = 'badge allowed';
+
+const label = document.getElementById('frame-label');
+if (location.hostname && location.hostname !== '127.0.0.1') {
+  label.textContent = location.hostname;
+}
+
+const out = document.getElementById('out');
+const notifyParent = (extra = {}) => {
+  try {
+    window.parent?.postMessage({ type: 'matrix3-frame', href: location.href, ...extra }, '*');
+  } catch {}
+};
+
+notifyParent({ status: 'loaded' });
+
 document.getElementById('sw').addEventListener('click', () => {
   if (!navigator.serviceWorker) {
-    document.getElementById('out').textContent = '(no sw in context)';
+    out.textContent = 'sw: unavailable in context';
+    out.className = 'badge blocked';
     return;
   }
+  out.textContent = 'sw: registering...';
+  out.className = 'badge pending';
   navigator.serviceWorker.register('/sw.js')
-    .then(() => document.getElementById('out').textContent = '(sw registered)')
-    .catch(e => document.getElementById('out').textContent = `(sw blocked: ${e.message})`);
+    .then(() => {
+      out.textContent = 'sw: registered';
+      out.className = 'badge allowed';
+    })
+    .catch(e => {
+      out.textContent = `sw: blocked (${e.message})`;
+      out.className = 'badge blocked';
+    });
 });
+
 if (new URLSearchParams(location.search).has('fetch')) {
+  out.textContent = 'fetch: pending...';
+  out.className = 'badge pending';
   fetch('https://api.github.com/')
-    .then(() => document.getElementById('out').textContent = '(fetch ok -- CSP bypassed!)')
-    .catch(() => document.getElementById('out').textContent = '(fetch blocked by CSP)');
+    .then(() => {
+      out.textContent = 'fetch: allowed (CSP bypassed!)';
+      out.className = 'badge allowed';
+      notifyParent({ fetch: 'allowed' });
+    })
+    .catch(() => {
+      out.textContent = 'fetch: blocked by CSP';
+      out.className = 'badge blocked';
+      notifyParent({ fetch: 'blocked' });
+    });
 }
 </script>
 </body>

@@ -21,7 +21,7 @@ self.addEventListener('fetch', (event) => {
 
                 text = text.replace(
                     '<!-- SW_STATUS -->',
-                    '<span style="color:red"><b>active</b></span>'
+                    '<span class="badge allowed">Active (intercepting /)</span>'
                 );
 
                 let newHeaders = new Headers(response.headers);

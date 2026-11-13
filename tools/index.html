@@ -1,345 +1,1304 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>matrix³ CSP testbench</title>
-</head>
-<body>
-<h1>matrix³ CSP testbench</h1>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>matrix³ CSP Testbench</title>
+<link rel="stylesheet" href="/style.css">
+<link id="manifest-link" rel="manifest" href="/manifest.webmanifest">
+<script nonce="test-nonce">
+(() => {
+  const probeState = new Map();
 
-<form action="/apply" method="POST">
-  <p><label for="csp">Content-Security-Policy:</label></p>
-  <textarea id="csp" name="csp" rows="6" cols="80" autofocus>{{csp}}</textarea>
-  <p>
-    <button type="submit">Apply</button>
-    <button type="submit" name="preset" value="script-src 'sha256-bT3XVZg4QeW3DXShOZHgz2VyyLQVbkGBVWcT+5q13oM='">Preset: sha256</button>
-    <button type="submit" name="preset" value="script-src 'nonce-test-nonce'">Preset: nonce</button>
-    <button type="submit" name="preset" value="script-src 'nonce-test-nonce' 'strict-dynamic'">Preset: strict-dynamic</button>
-    <a href="/reset">reset csp</a>
-  </p>
-</form>
-
-<hr>
-
-<h2>Inline script</h2>
-<script nonce="test-nonce">document.write('<p>inline ran</p>');</script>
-<script>document.write('<p>unhashed inline ran</p>');</script>
-
-<h2>eval()</h2>
-<script>
-try { eval('document.write("<p>eval ran</p>")'); }
-catch (e) { document.write('<p>eval blocked</p>'); }
-</script>
-
-<h2>Inline style</h2>
-<p style="color:green">green if inline style allowed</p>
-
-<h2>Image: same-origin</h2>
-<img src="/dot.png" alt="self">
-
-<h2>Image: cross-origin (https)</h2>
-<img src="https://www.google.com/favicon.ico" alt="cross">
-
-<h2>Image: data: URL</h2>
-<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" alt="data">
-
-<h2>Frame: same-origin</h2>
-<iframe src="/frame.html" width="300" height="60"></iframe>
-
-<h2>Frame: cross-origin</h2>
-<iframe src="https://example.com" width="300" height="60"></iframe>
-
-<h2>Object: same-origin</h2>
-<object data="/frame.html" width="300" height="60">object blocked / fallback</object>
-
-<h2>External script</h2>
-<script src="https://www.google.com/jsapi"></script>
-
-<h2>fetch</h2>
-<div id="fetch-out">fetch pending...</div>
-<script>
-fetch('https://api.github.com/')
-  .then(() => document.getElementById('fetch-out').textContent = 'fetch ok')
-  .catch(() => document.getElementById('fetch-out').textContent = 'fetch blocked');
-</script>
-
-<hr>
-
-<h2>Web Worker (postMessage &rarr; dynamic import)</h2>
-<p>
-  <button id="worker-url-btn" type="button">Worker (/worker.js) import()</button>
-  <button id="worker-blob-btn" type="button">Blob Worker (blob:) import()</button>
-  <button id="worker-data-btn" type="button">Data Worker (data:) import()</button>
-  <button id="worker-chain-btn" type="button">Chain (/worker.js &rarr; blob: &rarr; data:) import()</button>
-</p>
-<div id="worker-out">Click a button to test worker dynamic import...</div>
-<script>
-
-// Third party script to test
-const kTestModule = 'https://cdn.jsdelivr.net/npm/d3/+esm';
-
-function runWorkerCmd(url, message, revoke = false) {
-  const out = document.getElementById('worker-out');
-  out.textContent = `Starting worker (${url})...`;
-  try {
-    const w = new Worker(url);
-    w.addEventListener('message', (e) => {
-      out.textContent = e.data;
-      if (revoke) URL.revokeObjectURL(url);
-    });
-    w.addEventListener('error', (e) => {
-      out.textContent = 'worker error: ' + (e.message || 'blocked');
-      if (revoke) URL.revokeObjectURL(url);
-    });
-    w.postMessage(message);
-  } catch (err) {
-    out.textContent = 'worker creation blocked: ' + err;
+  function updateSummaryCounts() {
+    const summaryEl = document.getElementById('onload-summary');
+    if (!summaryEl) return;
+    const badges = document.querySelectorAll('#onload-grid .badge');
+    let allowed = 0;
+    let blocked = 0;
+    let pending = 0;
+    for (const b of badges) {
+      if (b.classList.contains('allowed')) allowed++;
+      else if (b.classList.contains('blocked')) blocked++;
+      else pending++;
+    }
+    summaryEl.textContent = `${allowed} Allowed · ${blocked} Blocked${pending ? ` · ${pending} Pending` : ''}`;
   }
-}
 
-document.getElementById('worker-url-btn').addEventListener('click', () => {
-  runWorkerCmd('/worker.js', { cmd: 'import', param: kTestModule });
-});
+  function setStatus(id, state, badgeText, detailText) {
+    probeState.set(id, { state, badge: badgeText, detail: detailText });
+    const badge = document.getElementById(`badge-${id}`);
+    if (badge) {
+      badge.className = `badge ${state}`;
+      badge.textContent = badgeText;
+    }
+    if (detailText !== undefined) {
+      const out = document.getElementById(`out-${id}`) || document.getElementById(`${id}-out`);
+      if (out) out.textContent = detailText;
+    }
+    updateSummaryCounts();
+  }
 
-document.getElementById('worker-blob-btn').addEventListener('click', async () => {
-  const code = await (await fetch('/worker.js')).text();
-  const blob = new Blob([code], { type: 'text/javascript' });
-  runWorkerCmd(URL.createObjectURL(blob), { cmd: 'import', param: kTestModule }, true);
-});
+  // Capture load/loadedmetadata/error on declarative resource probes (<img data-probe>, <script data-probe>, <link data-probe>, <audio data-probe>, <object data-probe>)
+  function handleResourceSuccess(e) {
+    const key = e.target?.dataset?.probe;
+    if (!key) return;
+    if (probeState.get(key)?.state === 'blocked') return;
+    setStatus(key, 'allowed', 'Allowed', e.target.dataset.okMsg || 'Loaded successfully');
+  }
 
-document.getElementById('worker-data-btn').addEventListener('click', async () => {
-  const code = await (await fetch('/worker.js')).text();
-  const dataUrl = 'data:text/javascript;charset=utf-8,' + encodeURIComponent(code);
-  runWorkerCmd(dataUrl, { cmd: 'import', param: kTestModule });
-});
+  document.addEventListener('load', (e) => {
+    handleResourceSuccess(e);
+    const frameKey = e.target?.dataset?.probeFrame;
+    if (frameKey) {
+      setTimeout(() => {
+        if (probeState.get(frameKey)?.state !== 'blocked') {
+          setStatus(frameKey, 'allowed', 'Allowed', e.target.dataset.okMsg || 'Frame loaded');
+        }
+      }, 60);
+    }
+  }, true);
 
-document.getElementById('worker-chain-btn').addEventListener('click', async () => {
-  const code = await (await fetch('/worker.js')).text();
-  const dataUrl = 'data:text/javascript;charset=utf-8,' + encodeURIComponent(code);
-  runWorkerCmd('/worker.js', {
-    cmd: 'spawn',
-    param: {
-      blobCode: code,
-      message: {
-        cmd: 'spawn',
-        param: {
-          url: dataUrl,
-          message: { cmd: 'import', param: kTestModule }
+  document.addEventListener('loadedmetadata', handleResourceSuccess, true);
+  document.addEventListener('loadeddata', handleResourceSuccess, true);
+
+  document.addEventListener('error', (e) => {
+    const key = e.target?.dataset?.probe;
+    if (!key) return;
+    setStatus(key, 'blocked', 'Blocked', e.target.dataset.errMsg || 'Blocked by CSP or network');
+  }, true);
+
+  // Track CSP violations directly via SecurityPolicyViolationEvent for frames, manifests, fonts, media, etc.
+  document.addEventListener('securitypolicyviolation', (e) => {
+    const dir = e.effectiveDirective;
+    const uri = e.blockedURI || '';
+    if (dir === 'frame-src' || dir === 'child-src') {
+      if (uri.includes('example.com')) {
+        setStatus('frame-cross', 'blocked', 'Blocked', 'Blocked https://example.com (frame-src)');
+      } else if (uri.includes('frame.html') || uri.startsWith(location.origin)) {
+        setStatus('frame-self', 'blocked', 'Blocked', 'Blocked /frame.html (frame-src \'self\')');
+      }
+    } else if (dir === 'manifest-src') {
+      if (uri.includes('example.com')) {
+        setStatus('manifest-cross', 'blocked', 'Blocked', 'Blocked https://example.com/manifest.webmanifest (manifest-src)');
+      } else {
+        setStatus('manifest-self', 'blocked', 'Blocked', 'Blocked /manifest.webmanifest (manifest-src \'self\')');
+      }
+    }
+  }, true);
+
+  // Listen for status messages from same-origin /frame.html
+  window.addEventListener('message', (e) => {
+    if (e.data?.type === 'matrix3-frame' && e.data.status === 'loaded') {
+      setStatus('frame-self', 'allowed', 'Allowed', 'Frame loaded & script executed');
+    }
+  });
+
+  document.addEventListener('DOMContentLoaded', () => {
+    // 0. Server CSP Policy Builder
+    const cspTextarea = document.getElementById('csp');
+    const dirSelect = document.getElementById('builder-directive');
+    const srcSelect = document.getElementById('builder-source');
+    const customInput = document.getElementById('builder-custom');
+    const appendBtn = document.getElementById('builder-append-btn');
+
+    function syncBuilderSourceState() {
+      const isValueless = dirSelect.value === 'upgrade-insecure-requests';
+      srcSelect.disabled = isValueless;
+      const isOther = !isValueless && srcSelect.value === '__other__';
+      customInput.classList.toggle('visible', isOther);
+      if (isOther) customInput.focus();
+    }
+
+    dirSelect.addEventListener('change', () => {
+      if (dirSelect.value === 'sandbox') {
+        srcSelect.value = 'allow-scripts';
+      } else if (dirSelect.value === 'require-trusted-types-for') {
+        srcSelect.value = "'script'";
+      } else if (dirSelect.value === 'report-uri') {
+        srcSelect.value = '/report';
+      } else if (srcSelect.value === 'allow-scripts' || srcSelect.value === "'script'" || srcSelect.value === '/report') {
+        srcSelect.value = "'self'";
+      }
+      syncBuilderSourceState();
+    });
+
+    srcSelect.addEventListener('change', syncBuilderSourceState);
+
+    function appendDirectiveToken() {
+      const directive = dirSelect.value;
+      let token = '';
+      if (directive !== 'upgrade-insecure-requests') {
+        token = srcSelect.value === '__other__' ? customInput.value.trim() : srcSelect.value;
+        if (!token && directive !== 'sandbox') return;
+      }
+
+      // Parse existing semicolon-delimited directives in #csp while preserving order
+      const raw = cspTextarea.value.trim();
+      const parts = raw ? raw.split(';').map(s => s.trim()).filter(Boolean) : [];
+      const idx = parts.findIndex(p => p.split(/\s+/)[0].toLowerCase() === directive);
+
+      if (idx === -1) {
+        parts.push(token ? `${directive} ${token}` : directive);
+      } else if (token) {
+        const tokens = parts[idx].split(/\s+/);
+        const existing = tokens.slice(1);
+        if (token === "'none'") {
+          parts[idx] = `${directive} 'none'`;
+        } else {
+          const filtered = existing.filter(t => t !== "'none'");
+          if (!filtered.includes(token)) filtered.push(token);
+          parts[idx] = [directive, ...filtered].join(' ');
+        }
+      }
+
+      cspTextarea.value = parts.join('; ');
+    }
+
+    appendBtn.addEventListener('click', appendDirectiveToken);
+    customInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        appendDirectiveToken();
+      }
+    });
+
+    // 1. Authorized inline script (this script itself)
+    setStatus('inline-auth', 'allowed', 'Allowed', 'Executed <script nonce="test-nonce"> (matches sha256 preset)');
+
+    // Re-apply any probe events that fired before DOMContentLoaded
+    for (const [key, val] of probeState.entries()) {
+      setStatus(key, val.state, val.badge, val.detail);
+    }
+
+    // Check already-complete images in case they settled synchronously
+    for (const img of document.querySelectorAll('img[data-probe]')) {
+      const key = img.dataset.probe;
+      if (!probeState.has(key) && img.complete) {
+        if (img.naturalWidth > 0) {
+          setStatus(key, 'allowed', 'Allowed', img.dataset.okMsg || 'Image loaded');
+        } else {
+          setStatus(key, 'blocked', 'Blocked', img.dataset.errMsg || 'Image blocked');
         }
       }
     }
-  });
-});
-</script>
 
-<hr>
+    // Check [data-probe-frame] elements: NavigationRequest::BeginNavigation checks
+    // frame-src synchronously in the browser process before starting the network
+    // request, so if no frame-src SecurityPolicyViolationEvent has fired after the
+    // initial IPC round-trip, frame-src allowed the navigation.
+    setTimeout(() => {
+      for (const ifr of document.querySelectorAll('iframe[data-probe-frame]')) {
+        const key = ifr.dataset.probeFrame;
+        if (probeState.get(key)?.state !== 'blocked') {
+          setStatus(key, 'allowed', 'Allowed', ifr.dataset.okMsg || 'Allowed by frame-src');
+        }
+      }
+    }, 150);
 
-<h2>Special Contexts (&lt;object&gt; &amp; opaque-origin srcdoc)</h2>
-<p>
-  <button id="object-btn" type="button">Load &lt;object data="/frame.html?fetch=1"&gt;</button>
-  <button id="srcdoc-btn" type="button">Load &lt;iframe sandbox="allow-scripts" srcdoc="..."&gt;</button>
-  <button id="many-frames-btn" type="button">Load 10 frames (fake1..10.localhost)</button>
-  <button id="long-host-btn" type="button">Load long &amp; deep hostnames</button>
-  <button id="redirect-btn" type="button">Load /redirect -&gt; cross-origin script (302)</button>
-</p>
-<p>
-  <select id="scheme-select">
-    <option value="frame:about">Frame: about:blank</option>
-    <option value="frame:data">Frame: data:text/html</option>
-    <option value="frame:blob">Frame: blob: URL</option>
-    <option value="frame:javascript">Frame: javascript: URL</option>
-    <option value="frame:custom">Frame: web+custom://example.com</option>
-    <option value="img:filesystem">Image: filesystem:http://example.com/...</option>
-    <option value="img:mediastream">Image: mediastream:http://example.com/...</option>
-    <option value="img:ftp">Image: ftp://ftp.example.com/dot.png</option>
-    <option value="img:custom">Image: web+custom://example.com/dot.png</option>
-    <option value="ws:ws">WebSocket: ws://echo.websocket.org</option>
-    <option value="ws:wss">WebSocket: wss://echo.websocket.org</option>
-  </select>
-  <button id="weird-schemes-btn" type="button">Test selected scheme</button>
-</p>
-<div id="special-out"></div>
-<script>
-document.getElementById('object-btn').addEventListener('click', () => {
-  const container = document.getElementById('special-out');
-  const obj = document.createElement('object');
-  obj.data = '/frame.html?fetch=1';
-  obj.width = '420';
-  obj.height = '50';
-  container.replaceChildren(obj);
-});
+    // 2. eval() test
+    try {
+      const res = eval('21 * 2');
+      setStatus('eval', 'allowed', 'Allowed', `eval('21 * 2') returned ${res}`);
+    } catch {
+      setStatus('eval', 'blocked', 'Blocked', 'EvalError: blocked by script-src (\'unsafe-eval\')');
+    }
 
-document.getElementById('srcdoc-btn').addEventListener('click', () => {
-  const container = document.getElementById('special-out');
-  const ifr = document.createElement('iframe');
-  ifr.sandbox = 'allow-scripts';
-  ifr.width = '420';
-  ifr.height = '50';
-  ifr.srcdoc = `<body style="font-family:sans-serif;margin:8px">sandboxed srcdoc <span id="out">...</span><script>
-    fetch('https://untrusted.example.com/')
-      .then(() => document.getElementById('out').textContent = '(fetch ok)')
-      .catch(() => document.getElementById('out').textContent = '(fetch blocked -- check if untrusted.example.com is in Report!)');
-  <\/script></body>`;
-  container.replaceChildren(ifr);
-});
+    // 3. WebAssembly (wasm-unsafe-eval) test
+    const wasmBytes = new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
+    WebAssembly.compile(wasmBytes)
+      .then(() => setStatus('wasm', 'allowed', 'Allowed', 'WebAssembly.compile() succeeded'))
+      .catch(() => setStatus('wasm', 'blocked', 'Blocked', 'Blocked by script-src (\'wasm-unsafe-eval\' / \'unsafe-eval\')'));
 
-document.getElementById('many-frames-btn').addEventListener('click', () => {
-  const container = document.getElementById('special-out');
-  const port = location.port ? `:${location.port}` : '';
-  container.replaceChildren(...Array.from({ length: 10 }, (_, i) => {
-    const ifr = document.createElement('iframe');
-    ifr.src = `http://fake${i + 1}.localhost${port}/frame.html?t=${Date.now()}`;
-    ifr.width = '180';
-    ifr.height = '40';
-    return ifr;
-  }));
-});
+    // 4. Inline style attribute test
+    const styleProbe = document.getElementById('inline-style-probe');
+    if (styleProbe) {
+      const color = getComputedStyle(styleProbe).color;
+      if (color === 'rgb(22, 163, 74)') {
+        setStatus('inline-style', 'allowed', 'Allowed', 'Inline style attribute applied (rgb(22, 163, 74))');
+      } else {
+        setStatus('inline-style', 'blocked', 'Blocked', 'Inline style attribute blocked by style-src');
+      }
+    }
 
-document.getElementById('long-host-btn').addEventListener('click', () => {
-  const container = document.getElementById('special-out');
-  const port = location.port ? `:${location.port}` : '';
-  const hosts = [
-    'supercalifragilisticexpialidocious-extremely-long-hostname-test.localhost',
-    'a.b.c.d.e.f.g.h.i.j.k.l.m.n.o.p.deep-labels.localhost',
-  ];
-  container.replaceChildren(...hosts.map(h => {
-    const ifr = document.createElement('iframe');
-    ifr.src = `http://${h}${port}/frame.html?fetch=1&t=${Date.now()}`;
-    ifr.width = '360';
-    ifr.height = '45';
-    return ifr;
-  }));
-  fetch('https://supercalifragilisticexpialidocious-extremely-long-subresource-host.example.com/').catch(() => {});
-  fetch('https://a.b.c.d.e.f.g.h.i.j.k.l.m.n.o.p.deep-subresource.example.com/').catch(() => {});
-});
+    // 5. Font probes (font-src 'self', https:, data:)
+    const kDataFontWoff2 = 'data:font/woff2;base64,d09GMgABAAAAAAJoAA4AAAAABiAAAAITAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP0ZGVE0cGhwGYACCQggEEQgKcH4LCgABNgIkAxAEIAWEDQcyGywFEVWbyQC+OLCbfebhIoB7dURtXixqKQ0zsSiO5nd/GA//7ZfeNzO7nLBMmf72VAErBkUquqQAHarKWgIjt0Lh8W1c6wKL28axUl8SIVoVbXZTIPQM1OZM8UPxOVUYW11n/88A7y833WdHN+O2JnBMiUywuegDzsMU8iiBqdGYgIuAAvEmEkRevelFJK4RIeB7PwM/z785/Lx4qyMAXeMKEgKBEv/iqRrpZerjSVlo/NGLFkktA9AEwJGr+y67PbmTm3tzcyFXIACwUCAjY0KArbLAhGIhiiKY3DxX+pfzYgFEnQBEQgIABDHJxekxYi4IFNBERhcjgIL1EohSSqc2UE51au12o3Nj8evh11OL+rTvFdWh6FXgU9iw9XOjmKo+1Ws/tn7OyVTlUx7CawJg1WM6E3HHQLDlwbffDG393+wU563mHKLKFZoSCHTWBQh2TmMCAFDimsUQJ2GOQJllrQkhsNN6wKD3AkASIAxZIkDSsEeAbLVXAhRD/gpQMxzzBagbisOyKC2gD2G+DMmgHmQn7Idivj7ULDQ9QN382ABk5zIiHq8dETkL4fbioLs0kufdSXQuhNUAPYL5aIcIviLLAtQc621/ScQQWDPII1sKlx7p1lzDKeFbiV0UGcFt9LQiUZucvHkR57sZFWauzkNwLAwohvQlXlIIysSCZUZFAu//1UAZkJAlgcpPUf1ZAA==';
+    const kCrossFontUrl = 'https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuLyfAZ9hiA.woff2';
 
-document.getElementById('redirect-btn').addEventListener('click', () => {
-  const out = document.getElementById('special-out');
-  out.textContent = 'Loading /redirect -> https://cdn.jsdelivr.net/npm/d3/+esm...';
-  const s = document.createElement('script');
-  s.src = `/redirect?t=${Date.now()}`;
-  s.onload = () => out.textContent = 'redirected script loaded ok';
-  s.onerror = () => out.textContent = 'redirected script blocked by CSP';
-  document.body.appendChild(s);
-});
+    function runFontProbe(id, family, src, okMsg, errMsg) {
+      if (typeof FontFace !== 'function') {
+        setStatus(id, 'blocked', 'Unsupported', 'FontFace API unavailable');
+        return;
+      }
+      const face = new FontFace(family, `url(${src})`);
+      face.load()
+        .then((loaded) => {
+          document.fonts.add(loaded);
+          setStatus(id, 'allowed', 'Allowed', okMsg);
+        })
+        .catch(() => {
+          setStatus(id, 'blocked', 'Blocked', errMsg);
+        });
+    }
 
-document.getElementById('weird-schemes-btn').addEventListener('click', () => {
-  const container = document.getElementById('special-out');
-  const choice = document.getElementById('scheme-select').value;
-  container.replaceChildren();
+    runFontProbe('font-self', 'MatrixSelfFont', '/font.woff2', 'Loaded /font.woff2 (font-src \'self\')', 'Blocked /font.woff2 (font-src \'self\')');
+    runFontProbe('font-cross', 'MatrixCrossFont', kCrossFontUrl, 'Loaded fonts.gstatic.com WOFF2 (font-src https:)', 'Blocked fonts.gstatic.com (font-src)');
+    runFontProbe('font-data', 'MatrixDataFont', kDataFontWoff2, 'Loaded inline data:font/woff2 (font-src data:)', 'Blocked data:font/woff2 (font-src data:)');
 
-  switch (choice) {
-    case 'frame:about':
-    case 'frame:data':
-    case 'frame:blob':
-    case 'frame:javascript':
-    case 'frame:custom': {
-      const urls = {
-        'frame:about': 'about:blank',
-        'frame:data': 'data:text/html,<body>data frame</body>',
-        'frame:blob': URL.createObjectURL(new Blob(['<body>blob frame</body>'], { type: 'text/html' })),
-        'frame:javascript': 'javascript:"<body>javascript frame</body>"',
-        'frame:custom': 'web+custom://example.com/frame',
-      };
+    // 6. fetch() probes (connect-src 'self' and cross-origin)
+    setStatus('fetch-self', 'pending', 'Pending', 'Fetching /dot.png...');
+    fetch('/dot.png')
+      .then((r) => setStatus('fetch-self', 'allowed', 'Allowed', `fetch('/dot.png') ok (HTTP ${r.status})`))
+      .catch(() => setStatus('fetch-self', 'blocked', 'Blocked', 'Blocked /dot.png by connect-src \'self\''));
+
+    setStatus('fetch', 'pending', 'Pending', 'Fetching https://api.github.com/...');
+    fetch('https://api.github.com/')
+      .then((r) => setStatus('fetch', 'allowed', 'Allowed', `fetch ok (HTTP ${r.status} from api.github.com)`))
+      .catch(() => setStatus('fetch', 'blocked', 'Blocked', 'Blocked https://api.github.com by connect-src'));
+
+    // 7. Web App Manifest probes (manifest-src 'self' and cross-origin)
+    async function runManifestProbes() {
+      const link = document.getElementById('manifest-link');
+      if (!link || typeof navigator.getInstalledRelatedApps !== 'function') {
+        setStatus('manifest-self', 'neutral', 'Unsupported', 'navigator.getInstalledRelatedApps() requires SecureContext');
+        setStatus('manifest-cross', 'neutral', 'Unsupported', 'navigator.getInstalledRelatedApps() requires SecureContext');
+        return;
+      }
+
+      // 7a. Same-origin manifest (/manifest.webmanifest)
+      try {
+        await navigator.getInstalledRelatedApps();
+      } catch {}
+      await new Promise(r => setTimeout(r, 40));
+      if (probeState.get('manifest-self')?.state !== 'blocked') {
+        setStatus('manifest-self', 'allowed', 'Allowed', 'Requested /manifest.webmanifest (manifest-src \'self\')');
+      }
+
+      // 7b. Cross-origin manifest (https://example.com/manifest.webmanifest)
+      link.href = 'https://example.com/manifest.webmanifest';
+      try {
+        await navigator.getInstalledRelatedApps();
+      } catch {}
+      await new Promise(r => setTimeout(r, 40));
+      if (probeState.get('manifest-cross')?.state !== 'blocked') {
+        setStatus('manifest-cross', 'allowed', 'Allowed', 'Allowed by manifest-src (https://example.com)');
+      }
+    }
+    runManifestProbes();
+
+    // 8. Web Workers (postMessage -> dynamic import)
+    const kTestModule = 'https://cdn.jsdelivr.net/npm/d3/+esm';
+    const workerOut = document.getElementById('worker-out');
+
+    function setWorkerResult(state, badgeText, title, detail) {
+      setStatus('worker', state, badgeText);
+      const titleEl = document.getElementById('worker-test-name');
+      if (titleEl) titleEl.textContent = title;
+      if (workerOut) workerOut.textContent = detail;
+    }
+
+    function runWorkerCmd(label, url, message, revoke = false) {
+      setWorkerResult('pending', 'Running', label, `Spawning Worker (${url.slice(0, 64)})...`);
+      try {
+        const w = new Worker(url);
+        w.addEventListener('message', (e) => {
+          const msg = String(e.data);
+          const ok = msg.endsWith('import ok');
+          if (ok) {
+            setWorkerResult('allowed', 'Allowed', label, `${msg} — worker-src and dynamic import(${kTestModule}) both succeeded.`);
+          } else {
+            setWorkerResult('blocked', 'Blocked', label, `${msg} — worker started, but inner step was blocked (check script-src / worker-src in matrix³ Report).`);
+          }
+          if (revoke) URL.revokeObjectURL(url);
+        });
+        w.addEventListener('error', (e) => {
+          setWorkerResult('blocked', 'Blocked', label, `worker error: ${e.message || 'blocked by worker-src'}`);
+          if (revoke) URL.revokeObjectURL(url);
+        });
+        w.postMessage(message);
+      } catch (err) {
+        setWorkerResult('blocked', 'Blocked', label, `worker creation blocked: ${err}`);
+      }
+    }
+
+    document.getElementById('worker-url-btn').addEventListener('click', () => {
+      runWorkerCmd('Same-Origin Worker (/worker.js)', '/worker.js', { cmd: 'import', param: kTestModule });
+    });
+
+    document.getElementById('worker-blob-btn').addEventListener('click', async () => {
+      const code = await (await fetch('/worker.js')).text();
+      const blob = new Blob([code], { type: 'text/javascript' });
+      runWorkerCmd('Blob Worker (blob:)', URL.createObjectURL(blob), { cmd: 'import', param: kTestModule }, true);
+    });
+
+    document.getElementById('worker-data-btn').addEventListener('click', async () => {
+      const code = await (await fetch('/worker.js')).text();
+      const dataUrl = 'data:text/javascript;charset=utf-8,' + encodeURIComponent(code);
+      runWorkerCmd('Data Worker (data:)', dataUrl, { cmd: 'import', param: kTestModule });
+    });
+
+    document.getElementById('worker-chain-btn').addEventListener('click', async () => {
+      const code = await (await fetch('/worker.js')).text();
+      const dataUrl = 'data:text/javascript;charset=utf-8,' + encodeURIComponent(code);
+      runWorkerCmd('3-Hop Worker Chain (/worker.js → blob: → data:)', '/worker.js', {
+        cmd: 'spawn',
+        param: {
+          blobCode: code,
+          message: {
+            cmd: 'spawn',
+            param: {
+              url: dataUrl,
+              message: { cmd: 'import', param: kTestModule }
+            }
+          }
+        }
+      });
+    });
+
+    // 9. Special Contexts, Redirects, & Scheme Edge Cases
+    const specialContainer = document.getElementById('special-out');
+
+    function setSpecialHeader(state, badgeText, title, desc) {
+      setStatus('special', state, badgeText);
+      document.getElementById('special-test-name').textContent = title;
+      document.getElementById('special-test-desc').textContent = desc;
+    }
+
+    document.getElementById('object-btn').addEventListener('click', () => {
+      setSpecialHeader(
+        'pending',
+        'Loaded',
+        '<object data="/frame.html?fetch=1">',
+        'Tests object-src \'self\' and verifies dNR injects CSP on "object" navigations so the inner fetch(https://api.github.com) is governed by connect-src.'
+      );
+      const obj = document.createElement('object');
+      obj.data = `/frame.html?fetch=1&t=${Date.now()}`;
+      obj.addEventListener('load', () => setStatus('special', 'allowed', 'Object Loaded'));
+      obj.addEventListener('error', () => setStatus('special', 'blocked', 'Object Blocked'));
+      specialContainer.replaceChildren(obj);
+    });
+
+    document.getElementById('srcdoc-btn').addEventListener('click', () => {
+      setSpecialHeader(
+        'pending',
+        'Running',
+        '<iframe sandbox="allow-scripts" srcdoc="...">',
+        'Opaque-origin ("null") srcdoc subframe attempting fetch("https://untrusted.example.com/"). Verifies violation attribution via documentId fallback.'
+      );
       const ifr = document.createElement('iframe');
-      ifr.src = urls[choice];
-      ifr.width = '300';
-      ifr.height = '45';
-      container.appendChild(ifr);
-      break;
-    }
-    case 'img:filesystem':
-    case 'img:mediastream':
-    case 'img:ftp':
-    case 'img:custom': {
-      const urls = {
-        'img:filesystem': 'filesystem:http://example.com/temporary/dot.png',
-        'img:mediastream': 'mediastream:http://example.com/stream',
-        'img:ftp': 'ftp://ftp.example.com/dot.png',
-        'img:custom': 'web+custom://example.com/dot.png',
+      ifr.sandbox = 'allow-scripts';
+      ifr.srcdoc = `<!doctype html><html><head><meta name="color-scheme" content="light dark"><link rel="stylesheet" href="/style.css"></head><body class="frame-view"><strong>sandboxed srcdoc (origin: null)</strong> <span id="out" class="badge pending">fetching untrusted.example.com...</span><script>
+        fetch('https://untrusted.example.com/')
+          .then(() => {
+            const el = document.getElementById('out');
+            el.textContent = 'fetch allowed';
+            el.className = 'badge allowed';
+            parent.postMessage({ type: 'matrix3-srcdoc', status: 'allowed' }, '*');
+          })
+          .catch(() => {
+            const el = document.getElementById('out');
+            el.textContent = 'fetch blocked — check untrusted.example.com in matrix³ Report!';
+            el.className = 'badge blocked';
+            parent.postMessage({ type: 'matrix3-srcdoc', status: 'blocked' }, '*');
+          });
+      <\/script></body></html>`;
+      specialContainer.replaceChildren(ifr);
+    });
+
+    window.addEventListener('message', (e) => {
+      if (e.data?.type === 'matrix3-srcdoc') {
+        if (e.data.status === 'blocked') {
+          setStatus('special', 'blocked', 'Fetch Blocked (Check Report)');
+        } else {
+          setStatus('special', 'allowed', 'Fetch Allowed');
+        }
+      }
+    });
+
+    document.getElementById('redirect-btn').addEventListener('click', () => {
+      setSpecialHeader(
+        'pending',
+        'Loading',
+        '302 Redirect (/redirect → https://cdn.jsdelivr.net/npm/d3/+esm)',
+        'Same-origin <script src="/redirect"> 302-redirects to cross-origin jsdelivr. Verifies onBeforeRedirect resolves blocked-uri to https://cdn.jsdelivr.net instead of \'self\'.'
+      );
+      specialContainer.textContent = 'Requesting /redirect -> https://cdn.jsdelivr.net/npm/d3/+esm...';
+      const s = document.createElement('script');
+      s.src = `/redirect?t=${Date.now()}`;
+      s.onload = () => {
+        setStatus('special', 'allowed', 'Allowed');
+        specialContainer.textContent = 'redirected script loaded ok (both \'self\' and https://cdn.jsdelivr.net allowed)';
       };
-      const img = document.createElement('img');
-      img.src = urls[choice];
-      img.alt = choice;
-      container.appendChild(img);
-      break;
+      s.onerror = () => {
+        setStatus('special', 'blocked', 'Blocked');
+        specialContainer.textContent = 'redirected script blocked by CSP — check that https://cdn.jsdelivr.net (not just \'self\') appears in matrix³ Report!';
+      };
+      document.body.appendChild(s);
+    });
+
+    document.getElementById('many-frames-btn').addEventListener('click', () => {
+      setSpecialHeader(
+        'allowed',
+        '10 Frames Created',
+        '10 Subdomain Frames (fake1.localhost .. fake10.localhost)',
+        'Requires frame-src http: (or *.localhost). Tests multi-row origin tab wrapping in div#frames and Host vs Domain scope bucketing.'
+      );
+      const port = location.port ? `:${location.port}` : '';
+      const grid = document.createElement('div');
+      grid.className = 'frame-grid';
+      grid.append(...Array.from({ length: 10 }, (_, i) => {
+        const ifr = document.createElement('iframe');
+        ifr.src = `http://fake${i + 1}.localhost${port}/frame.html?t=${Date.now()}`;
+        return ifr;
+      }));
+      specialContainer.replaceChildren(grid);
+    });
+
+    document.getElementById('long-host-btn').addEventListener('click', () => {
+      setSpecialHeader(
+        'allowed',
+        'Dispatched',
+        'Long (63-char) & Deep (17-label) Hostnames',
+        'Loads subframes and cross-origin fetch() calls to extreme hostnames to test table ellipsis truncation and label-count priority scaling (10 * L + tier).'
+      );
+      const port = location.port ? `:${location.port}` : '';
+      const hosts = [
+        'supercalifragilisticexpialidocious-extremely-long-hostname-test.localhost',
+        'a.b.c.d.e.f.g.h.i.j.k.l.m.n.o.p.deep-labels.localhost',
+      ];
+      const grid = document.createElement('div');
+      grid.className = 'frame-grid';
+      grid.append(...hosts.map(h => {
+        const ifr = document.createElement('iframe');
+        ifr.src = `http://${h}${port}/frame.html?fetch=1&t=${Date.now()}`;
+        return ifr;
+      }));
+      specialContainer.replaceChildren(grid);
+      fetch('https://supercalifragilisticexpialidocious-extremely-long-subresource-host.example.com/').catch(() => {});
+      fetch('https://a.b.c.d.e.f.g.h.i.j.k.l.m.n.o.p.deep-subresource.example.com/').catch(() => {});
+    });
+
+    document.getElementById('weird-schemes-btn').addEventListener('click', () => {
+      const choice = document.getElementById('scheme-select').value;
+      specialContainer.replaceChildren();
+
+      switch (choice) {
+        case 'frame:about':
+        case 'frame:data':
+        case 'frame:blob':
+        case 'frame:javascript':
+        case 'frame:custom': {
+          const urls = {
+            'frame:about': 'about:blank',
+            'frame:data': 'data:text/html,<body style="font-family:sans-serif;margin:8px">data:text/html frame loaded</body>',
+            'frame:blob': URL.createObjectURL(new Blob(['<body style="font-family:sans-serif;margin:8px">blob: frame loaded</body>'], { type: 'text/html' })),
+            'frame:javascript': 'javascript:"<body style=\'font-family:sans-serif;margin:8px\'>javascript: frame loaded</body>"',
+            'frame:custom': 'web+custom://example.com/frame',
+          };
+          const notes = {
+            'frame:about': 'Tests frame-src with about:blank.',
+            'frame:data': 'Tests frame-src data:. Note: Chromium sanitizes non-standard frame-src blocked-uri to "", which matrix³ maps to data:.',
+            'frame:blob': 'Tests frame-src blob:.',
+            'frame:javascript': 'Tests frame navigation to a javascript: URI.',
+            'frame:custom': 'Tests non-standard custom scheme in frame-src (Chromium strips blocked-uri to "", mapped to data:).',
+          };
+          setSpecialHeader('pending', 'Frame Created', `Scheme Test: ${choice} (${urls[choice].slice(0, 48)})`, notes[choice]);
+          const ifr = document.createElement('iframe');
+          ifr.src = urls[choice];
+          specialContainer.appendChild(ifr);
+          break;
+        }
+        case 'img:filesystem':
+        case 'img:mediastream':
+        case 'img:ftp':
+        case 'img:custom': {
+          const urls = {
+            'img:filesystem': 'filesystem:http://example.com/temporary/dot.png',
+            'img:mediastream': 'mediastream:http://example.com/stream',
+            'img:ftp': 'ftp://ftp.example.com/dot.png',
+            'img:custom': 'web+custom://example.com/dot.png',
+          };
+          setSpecialHeader('pending', 'Testing...', `Image Scheme: ${urls[choice]}`, 'Tests img-src scheme matching and report URI normalization.');
+          const wrap = document.createElement('div');
+          wrap.className = 'media-preview';
+          const img = document.createElement('img');
+          img.src = urls[choice];
+          img.alt = choice;
+          const msg = document.createElement('span');
+          msg.textContent = `Loading ${urls[choice]}...`;
+          img.addEventListener('load', () => {
+            setStatus('special', 'allowed', 'Allowed');
+            msg.textContent = `Image loaded: ${urls[choice]}`;
+          });
+          img.addEventListener('error', () => {
+            setStatus('special', 'blocked', 'Blocked / Error');
+            msg.textContent = `Image blocked or failed to load: ${urls[choice]} (check img-src in matrix³ Report)`;
+          });
+          wrap.append(img, msg);
+          specialContainer.appendChild(wrap);
+          break;
+        }
+        case 'ws:ws':
+        case 'ws:wss': {
+          const wsUrl = choice === 'ws:ws' ? 'ws://echo.websocket.org' : 'wss://echo.websocket.org';
+          setSpecialHeader('pending', 'Connecting...', `WebSocket Scheme: ${wsUrl}`, 'Tests connect-src for ws: / wss: WebSocket handshakes.');
+          specialContainer.textContent = `Connecting to ${wsUrl}...`;
+          try {
+            const ws = new WebSocket(wsUrl);
+            ws.addEventListener('open', () => {
+              setStatus('special', 'allowed', 'Allowed (Opened)');
+              specialContainer.textContent = `WebSocket connected to ${wsUrl}`;
+              ws.close();
+            });
+            ws.addEventListener('error', () => {
+              setStatus('special', 'blocked', 'Blocked / Error');
+              specialContainer.textContent = `WebSocket blocked or failed: ${wsUrl} (check connect-src in matrix³ Report)`;
+            });
+          } catch (err) {
+            setStatus('special', 'blocked', 'Blocked');
+            specialContainer.textContent = `WebSocket threw synchronously: ${err}`;
+          }
+          break;
+        }
+      }
+    });
+
+    // 10. Service Worker & WebSockets
+    const kTestWsUrl = 'wss://echo.websocket.org';
+
+    async function refreshSwRegistrationState() {
+      if (!('serviceWorker' in navigator)) {
+        setStatus('sw', 'blocked', 'Unsupported', 'Service Workers are not supported in this browser.');
+        return;
+      }
+      try {
+        const reg = await navigator.serviceWorker.getRegistration('/');
+        if (navigator.serviceWorker.controller) {
+          setStatus('sw', 'allowed', 'Controlling Page', `Registered & active controller (${navigator.serviceWorker.controller.scriptURL})`);
+        } else if (reg) {
+          setStatus('sw', 'pending', 'Registered (Reload to Control)', `Registered at scope ${reg.scope} — reload page to intercept navigation`);
+        } else {
+          setStatus('sw', 'neutral', 'Not Registered', 'Click "Register Service Worker (/sw.js)" to install.');
+        }
+      } catch {
+        setStatus('sw', 'neutral', 'Idle', 'Click "Register Service Worker (/sw.js)" to install.');
+      }
     }
-    case 'ws:ws':
-      try { new WebSocket('ws://echo.websocket.org'); } catch {}
-      break;
-    case 'ws:wss':
-      try { new WebSocket('wss://echo.websocket.org'); } catch {}
-      break;
-  }
-});
-</script>
 
-<hr>
+    refreshSwRegistrationState();
 
-<h2>Service Worker</h2>
-<p><b>Interceptor Status:</b> <!-- SW_STATUS --></p>
-<div id="sw-out">Click Register Service Worker to install /sw.js...</div>
-<p>
-  <button id="sw-reg-btn" type="button">Register Service Worker (/sw.js)</button>
-  <button id="ws-page-btn" type="button">Page WebSocket (wss://)</button>
-  <button id="ws-sw-btn" type="button">SW WebSocket (wss://)</button>
-</p>
-<div id="ws-out">Click a button to test wss:// connection...</div>
-<script>
-const kTestWsUrl = 'wss://echo.websocket.org';
-
-document.getElementById('ws-page-btn').addEventListener('click', () => {
-  const out = document.getElementById('ws-out');
-  out.textContent = `Connecting Page WebSocket (${kTestWsUrl})...`;
-  try {
-    const ws = new WebSocket(kTestWsUrl);
-    ws.addEventListener('open', () => {
-      out.textContent = `Page WebSocket opened: ${kTestWsUrl}`;
-      ws.close();
+    document.getElementById('sw-reg-btn').addEventListener('click', () => {
+      if (!('serviceWorker' in navigator)) {
+        setStatus('sw', 'blocked', 'Unsupported', 'Service workers not supported in this browser.');
+        return;
+      }
+      setStatus('sw', 'pending', 'Registering...', 'Registering /sw.js...');
+      navigator.serviceWorker.register('/sw.js')
+        .then(reg => {
+          const controlling = !!navigator.serviceWorker.controller;
+          setStatus(
+            'sw',
+            'allowed',
+            controlling ? 'Registered & Controlling' : 'Registered (Reload Page)',
+            `Registration successful, scope: ${reg.scope}${controlling ? ' (active controller)' : ' — reload page to activate fetch interception'}`
+          );
+        })
+        .catch(err => {
+          setStatus('sw', 'blocked', 'Blocked', `Registration failed: ${err}`);
+        });
     });
-    ws.addEventListener('error', () => {
-      out.textContent = `Page WebSocket error / blocked: ${kTestWsUrl}`;
+
+    document.getElementById('ws-page-btn').addEventListener('click', () => {
+      setStatus('ws', 'pending', 'Connecting...', `Connecting Page WebSocket (${kTestWsUrl})...`);
+      try {
+        const ws = new WebSocket(kTestWsUrl);
+        ws.addEventListener('open', () => {
+          setStatus('ws', 'allowed', 'Allowed (Opened)', `Page WebSocket opened: ${kTestWsUrl}`);
+          ws.close();
+        });
+        ws.addEventListener('error', () => {
+          setStatus('ws', 'blocked', 'Blocked / Error', `Page WebSocket error / blocked: ${kTestWsUrl}`);
+        });
+      } catch (err) {
+        setStatus('ws', 'blocked', 'Blocked', `Page WebSocket threw: ${err}`);
+      }
     });
-  } catch (err) {
-    out.textContent = `Page WebSocket threw: ${err}`;
-  }
-});
 
-document.getElementById('ws-sw-btn').addEventListener('click', () => {
-  const out = document.getElementById('ws-out');
-  if (!navigator.serviceWorker?.controller) {
-    out.textContent = 'No active Service Worker controller (allow worker-src \'self\', register SW, and reload)';
-    return;
-  }
-  out.textContent = `Asking SW to connect WebSocket (${kTestWsUrl})...`;
-  navigator.serviceWorker.controller.postMessage({ cmd: 'websocket', url: kTestWsUrl });
-});
-
-document.getElementById('sw-reg-btn').addEventListener('click', () => {
-  if (!('serviceWorker' in navigator)) {
-    document.getElementById('sw-out').textContent = 'Service workers not supported in this browser.';
-    return;
-  }
-  navigator.serviceWorker.register('/sw.js')
-    .then(reg => {
-      document.getElementById('sw-out').textContent = 'Registration successful, scope: ' + reg.scope;
-      console.log('SW: registered', reg);
-    })
-    .catch(err => {
-      document.getElementById('sw-out').textContent = 'Registration failed: ' + err;
-      console.warn('SW: registration failed', err);
+    document.getElementById('ws-sw-btn').addEventListener('click', () => {
+      if (!navigator.serviceWorker?.controller) {
+        setStatus('ws', 'blocked', 'No SW Controller', 'No active Service Worker controller (allow worker-src \'self\', register SW, and reload)');
+        return;
+      }
+      setStatus('ws', 'pending', 'Connecting via SW...', `Asking SW to connect WebSocket (${kTestWsUrl})...`);
+      navigator.serviceWorker.controller.postMessage({ cmd: 'websocket', url: kTestWsUrl });
     });
-});
 
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.addEventListener('message', (e) => {
-    document.getElementById('ws-out').textContent = e.data;
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', (e) => {
+        const msg = String(e.data);
+        const ok = msg.includes('opened:');
+        setStatus('ws', ok ? 'allowed' : 'blocked', ok ? 'Allowed (Opened)' : 'Blocked / Error', msg);
+      });
+
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        refreshSwRegistrationState();
+      });
+    }
   });
-
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    console.log('SW: Controller changed');
-  });
-}
+})();
 </script>
+</head>
+<body>
+<main class="page-shell">
+  <header class="page-header">
+    <div>
+      <h1>matrix³ CSP Testbench</h1>
+      <p>Interactive Content Security Policy test suite for verifying directive enforcement, report attribution, and rule overrides.</p>
+    </div>
+    <a href="/reset" class="btn">Reset Server CSP</a>
+  </header>
+
+  <!-- Server CSP Configuration -->
+  <section class="panel" aria-labelledby="heading-server-csp">
+    <div class="section-header">
+      <h2 id="heading-server-csp">Server <code>Content-Security-Policy</code> Response Header</h2>
+      <p>Appended alongside matrix³'s policy by the browser (visible under <strong>Server Policy</strong> in the matrix³ side panel).</p>
+    </div>
+
+    <form class="csp-form" action="/apply" method="POST">
+      <div class="policy-builder" role="group" aria-label="Policy builder">
+        <span class="policy-builder-label">Policy Builder:</span>
+        <select id="builder-directive" aria-label="Directive">
+          <optgroup label="Fetch Directives">
+            <option value="default-src">default-src (📌)</option>
+            <option value="script-src" selected>script-src (📜)</option>
+            <option value="style-src">style-src (🦚)</option>
+            <option value="img-src">img-src (🖼️)</option>
+            <option value="frame-src">frame-src (🪟)</option>
+            <option value="font-src">font-src (🔤)</option>
+            <option value="media-src">media-src (📽️)</option>
+            <option value="connect-src">connect-src (🔌)</option>
+            <option value="worker-src">worker-src (🔧)</option>
+          </optgroup>
+          <optgroup label="Advanced &amp; Fallback Fetch Directives">
+            <option value="child-src">child-src (👶)</option>
+            <option value="manifest-src">manifest-src (🪪)</option>
+            <option value="object-src">object-src (🧩)</option>
+            <option value="script-src-elem">script-src-elem (&rarr; script-src)</option>
+            <option value="script-src-attr">script-src-attr (&rarr; script-src)</option>
+            <option value="style-src-elem">style-src-elem (&rarr; style-src)</option>
+            <option value="style-src-attr">style-src-attr (&rarr; style-src)</option>
+          </optgroup>
+          <optgroup label="Sandbox &amp; Passthrough Directives">
+            <option value="sandbox">sandbox (🔒)</option>
+            <option value="base-uri">base-uri</option>
+            <option value="form-action">form-action</option>
+            <option value="frame-ancestors">frame-ancestors</option>
+            <option value="require-trusted-types-for">require-trusted-types-for</option>
+            <option value="trusted-types">trusted-types</option>
+            <option value="upgrade-insecure-requests">upgrade-insecure-requests</option>
+            <option value="report-uri">report-uri (stripped by matrix³)</option>
+          </optgroup>
+        </select>
+
+        <select id="builder-source" aria-label="Source expression">
+          <optgroup label="Keywords">
+            <option value="'self'" selected>'self'</option>
+            <option value="'none'">'none'</option>
+            <option value="'unsafe-inline'">'unsafe-inline'</option>
+            <option value="'unsafe-eval'">'unsafe-eval'</option>
+            <option value="'wasm-unsafe-eval'">'wasm-unsafe-eval'</option>
+            <option value="'strict-dynamic'">'strict-dynamic'</option>
+            <option value="'unsafe-hashes'">'unsafe-hashes'</option>
+          </optgroup>
+          <optgroup label="Testbench Nonce &amp; Hash">
+            <option value="'nonce-test-nonce'">'nonce-test-nonce'</option>
+            <option value="'sha256-HFCJD0GBDoV+qrBGqFd6eyfXisUHPSlUB7WoxPEHC6c='">'sha256-…' (Authorized Inline Script)</option>
+          </optgroup>
+          <optgroup label="Schemes &amp; Wildcard">
+            <option value="https:">https:</option>
+            <option value="http:">http:</option>
+            <option value="data:">data:</option>
+            <option value="blob:">blob:</option>
+            <option value="wss:">wss:</option>
+            <option value="ws:">ws:</option>
+            <option value="*">* (wildcard)</option>
+          </optgroup>
+          <optgroup label="Testbench Origins &amp; Paths">
+            <option value="https://www.google.com">https://www.google.com</option>
+            <option value="https://www.google.com/jsapi">https://www.google.com/jsapi (path-scoped)</option>
+            <option value="https://fonts.googleapis.com">https://fonts.googleapis.com</option>
+            <option value="https://fonts.gstatic.com">https://fonts.gstatic.com</option>
+            <option value="https://api.github.com">https://api.github.com</option>
+            <option value="https://example.com">https://example.com</option>
+            <option value="https://cdn.jsdelivr.net">https://cdn.jsdelivr.net</option>
+            <option value="https://actions.google.com">https://actions.google.com</option>
+          </optgroup>
+          <optgroup label="Sandbox / Other Directive Tokens">
+            <option value="">(empty — full sandbox)</option>
+            <option value="allow-scripts">allow-scripts</option>
+            <option value="allow-scripts allow-same-origin">allow-scripts allow-same-origin</option>
+            <option value="allow-scripts allow-forms">allow-scripts allow-forms</option>
+            <option value="allow-popups">allow-popups</option>
+            <option value="'script'">'script' (trusted-types)</option>
+            <option value="/report">/report (report-uri)</option>
+          </optgroup>
+          <optgroup label="Custom">
+            <option value="__other__">Other (custom)…</option>
+          </optgroup>
+        </select>
+
+        <input id="builder-custom" type="text" placeholder="e.g. *.example.com or 'nonce-abc'">
+        <button id="builder-append-btn" type="button">Append</button>
+      </div>
+
+      <label for="csp">
+        <span>Active HTTP Header Value</span>
+      </label>
+      <textarea id="csp" name="csp" rows="3" cols="80" placeholder="No server Content-Security-Policy header set (empty). Use the Policy Builder above or type a policy directly..." autofocus>{{csp}}</textarea>
+      <div class="button-bar">
+        <button type="submit" class="primary">Apply Header</button>
+        <a href="/reset" class="btn">Clear Header</a>
+      </div>
+    </form>
+  </section>
+
+  <!-- Automatic Page-Load Probes -->
+  <section class="panel" aria-labelledby="heading-onload">
+    <div class="section-header">
+      <div>
+        <h2 id="heading-onload">1. Automatic Page-Load Probes</h2>
+        <p>Executes automatically on page load to cover every CSP fetch directive (<code>script-src</code>, <code>style-src</code>, <code>img-src</code>, <code>font-src</code>, <code>media-src</code>, <code>connect-src</code>, <code>frame-src</code>, <code>object-src</code>, <code>manifest-src</code>).</p>
+      </div>
+      <span id="onload-summary" class="badge">23 Probes</span>
+    </div>
+
+    <div id="onload-grid" class="card-grid">
+      <!-- 1. Inline Script (nonce + sha256) -->
+      <article class="card">
+        <header>
+          <h3>📜 Inline Script (Authorized)</h3>
+          <span id="badge-inline-auth" class="badge blocked">Blocked</span>
+        </header>
+        <div class="meta-row">
+          <code>script-src</code>
+          <code>'nonce-test-nonce'</code>
+          <code>'sha256-…'</code>
+        </div>
+        <footer id="out-inline-auth">Blocked by script-src (did not execute)</footer>
+      </article>
+
+      <!-- 2. Inline Script (Unhashed) -->
+      <article class="card">
+        <header>
+          <h3>📜 Inline Script (Unhashed)</h3>
+          <span id="badge-inline-plain" class="badge blocked">Blocked</span>
+        </header>
+        <div class="meta-row">
+          <code>script-src</code>
+          <code>'unsafe-inline'</code>
+        </div>
+        <footer id="out-inline-plain">Blocked by script-src (requires effective 'unsafe-inline')</footer>
+      </article>
+
+      <!-- 3. eval() -->
+      <article class="card">
+        <header>
+          <h3>📜 Dynamic <code>eval()</code></h3>
+          <span id="badge-eval" class="badge blocked">Blocked</span>
+        </header>
+        <div class="meta-row">
+          <code>script-src</code>
+          <code>'unsafe-eval'</code>
+        </div>
+        <footer id="out-eval">Blocked (page script did not run)</footer>
+      </article>
+
+      <!-- 4. WebAssembly (wasm-unsafe-eval) -->
+      <article class="card">
+        <header>
+          <h3>📜 WebAssembly Compile</h3>
+          <span id="badge-wasm" class="badge blocked">Blocked</span>
+        </header>
+        <div class="meta-row">
+          <code>script-src</code>
+          <code>'wasm-unsafe-eval'</code>
+        </div>
+        <footer id="out-wasm">Compiling 8-byte WebAssembly module...</footer>
+      </article>
+
+      <!-- 5. External Script -->
+      <article class="card">
+        <header>
+          <h3>📜 External Script</h3>
+          <span id="badge-ext-script" class="badge pending">Pending</span>
+        </header>
+        <div class="meta-row">
+          <code>script-src</code>
+          <code>https://www.google.com</code>
+        </div>
+        <footer id="out-ext-script">Loading https://www.google.com/jsapi...</footer>
+      </article>
+
+      <!-- 6. Inline Style -->
+      <article class="card">
+        <header>
+          <h3>🦚 Inline Style Attribute</h3>
+          <span id="badge-inline-style" class="badge blocked">Unchecked</span>
+        </header>
+        <div class="meta-row">
+          <code>style-src</code>
+          <code>'unsafe-inline'</code>
+        </div>
+        <footer>
+          <span id="inline-style-probe" style="color: rgb(22, 163, 74)">Sample text with inline style="color: green"</span>
+          <small id="out-inline-style">Inspecting computed style...</small>
+        </footer>
+      </article>
+
+      <!-- 7. External Stylesheet -->
+      <article class="card">
+        <header>
+          <h3>🦚 External Stylesheet</h3>
+          <span id="badge-ext-style" class="badge pending">Pending</span>
+        </header>
+        <div class="meta-row">
+          <code>style-src</code>
+          <code>https://fonts.googleapis.com</code>
+        </div>
+        <footer id="out-ext-style">Loading fonts.googleapis.com CSS...</footer>
+      </article>
+
+      <!-- 8. Image: Same-Origin -->
+      <article class="card">
+        <header>
+          <h3>🖼️ Image: Same-Origin</h3>
+          <span id="badge-img-self" class="badge pending">Pending</span>
+        </header>
+        <div class="meta-row">
+          <code>img-src</code>
+          <code>'self'</code>
+          <code>/dot.png</code>
+        </div>
+        <footer>
+          <div class="media-preview">
+            <img data-probe="img-self" data-ok-msg="Loaded /dot.png ('self')" data-err-msg="Blocked /dot.png (img-src 'self')" src="/dot.png" alt="self">
+            <span id="out-img-self">Loading /dot.png...</span>
+          </div>
+        </footer>
+      </article>
+
+      <!-- 9. Image: Cross-Origin -->
+      <article class="card">
+        <header>
+          <h3>🖼️ Image: Cross-Origin</h3>
+          <span id="badge-img-cross" class="badge pending">Pending</span>
+        </header>
+        <div class="meta-row">
+          <code>img-src</code>
+          <code>https://www.google.com</code>
+        </div>
+        <footer>
+          <div class="media-preview">
+            <img data-probe="img-cross" data-ok-msg="Loaded google.com/favicon.ico" data-err-msg="Blocked google.com/favicon.ico (img-src)" src="https://www.google.com/favicon.ico" alt="cross">
+            <span id="out-img-cross">Loading google.com/favicon.ico...</span>
+          </div>
+        </footer>
+      </article>
+
+      <!-- 10. Image: data: URL -->
+      <article class="card">
+        <header>
+          <h3>🖼️ Image: <code>data:</code> URI</h3>
+          <span id="badge-img-data" class="badge pending">Pending</span>
+        </header>
+        <div class="meta-row">
+          <code>img-src</code>
+          <code>data:</code>
+        </div>
+        <footer>
+          <div class="media-preview">
+            <img data-probe="img-data" data-ok-msg="Loaded inline data:image/png" data-err-msg="Blocked data:image/png (img-src data:)" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" alt="data">
+            <span id="out-img-data">Loading data:image/png...</span>
+          </div>
+        </footer>
+      </article>
+
+      <!-- 11. Font: Same-Origin -->
+      <article class="card">
+        <header>
+          <h3>🔤 Font: Same-Origin</h3>
+          <span id="badge-font-self" class="badge pending">Pending</span>
+        </header>
+        <div class="meta-row">
+          <code>font-src</code>
+          <code>'self'</code>
+          <code>/font.woff2</code>
+        </div>
+        <footer id="out-font-self">Loading /font.woff2 via FontFace...</footer>
+      </article>
+
+      <!-- 12. Font: Cross-Origin -->
+      <article class="card">
+        <header>
+          <h3>🔤 Font: Cross-Origin</h3>
+          <span id="badge-font-cross" class="badge pending">Pending</span>
+        </header>
+        <div class="meta-row">
+          <code>font-src</code>
+          <code>https://fonts.gstatic.com</code>
+        </div>
+        <footer id="out-font-cross">Loading fonts.gstatic.com WOFF2...</footer>
+      </article>
+
+      <!-- 13. Font: data: URI -->
+      <article class="card">
+        <header>
+          <h3>🔤 Font: <code>data:</code> URI</h3>
+          <span id="badge-font-data" class="badge pending">Pending</span>
+        </header>
+        <div class="meta-row">
+          <code>font-src</code>
+          <code>data:</code>
+        </div>
+        <footer id="out-font-data">Loading inline data:font/woff2...</footer>
+      </article>
+
+      <!-- 14. Media: Same-Origin -->
+      <article class="card">
+        <header>
+          <h3>📽️ Media: Same-Origin</h3>
+          <span id="badge-media-self" class="badge pending">Pending</span>
+        </header>
+        <div class="meta-row">
+          <code>media-src</code>
+          <code>'self'</code>
+          <code>/beep.wav</code>
+        </div>
+        <footer>
+          <audio data-probe="media-self" data-ok-msg="Loaded /beep.wav (media-src 'self')" data-err-msg="Blocked /beep.wav (media-src 'self')" src="/beep.wav" preload="auto"></audio>
+          <span id="out-media-self">Loading /beep.wav...</span>
+        </footer>
+      </article>
+
+      <!-- 15. Media: Cross-Origin -->
+      <article class="card">
+        <header>
+          <h3>📽️ Media: Cross-Origin</h3>
+          <span id="badge-media-cross" class="badge pending">Pending</span>
+        </header>
+        <div class="meta-row">
+          <code>media-src</code>
+          <code>https://actions.google.com</code>
+        </div>
+        <footer>
+          <audio data-probe="media-cross" data-ok-msg="Loaded actions.google.com audio" data-err-msg="Blocked actions.google.com (media-src)" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="metadata"></audio>
+          <span id="out-media-cross">Loading actions.google.com OGG...</span>
+        </footer>
+      </article>
+
+      <!-- 16. Media: data: URI -->
+      <article class="card">
+        <header>
+          <h3>📽️ Media: <code>data:</code> URI</h3>
+          <span id="badge-media-data" class="badge pending">Pending</span>
+        </header>
+        <div class="meta-row">
+          <code>media-src</code>
+          <code>data:</code>
+        </div>
+        <footer>
+          <audio data-probe="media-data" data-ok-msg="Loaded inline data:audio/wav" data-err-msg="Blocked data:audio/wav (media-src data:)" src="data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==" preload="auto"></audio>
+          <span id="out-media-data">Loading inline data:audio/wav...</span>
+        </footer>
+      </article>
+
+      <!-- 17. Fetch: Same-Origin -->
+      <article class="card">
+        <header>
+          <h3>🔌 Fetch: Same-Origin</h3>
+          <span id="badge-fetch-self" class="badge blocked">Blocked</span>
+        </header>
+        <div class="meta-row">
+          <code>connect-src</code>
+          <code>'self'</code>
+          <code>/dot.png</code>
+        </div>
+        <footer id="out-fetch-self">fetch('/dot.png') pending...</footer>
+      </article>
+
+      <!-- 18. Fetch: Cross-Origin -->
+      <article class="card">
+        <header>
+          <h3>🔌 Fetch: Cross-Origin</h3>
+          <span id="badge-fetch" class="badge blocked">Blocked</span>
+        </header>
+        <div class="meta-row">
+          <code>connect-src</code>
+          <code>https://api.github.com</code>
+        </div>
+        <footer id="out-fetch">fetch('https://api.github.com/') pending...</footer>
+      </article>
+
+      <!-- 19. Frame: Same-Origin -->
+      <article class="card">
+        <header>
+          <h3>🪟 Frame: Same-Origin</h3>
+          <span id="badge-frame-self" class="badge pending">Pending</span>
+        </header>
+        <div class="meta-row">
+          <code>frame-src</code>
+          <code>'self'</code>
+          <code>/frame.html</code>
+        </div>
+        <footer>
+          <iframe data-probe-frame="frame-self" data-ok-msg="Loaded /frame.html" src="/frame.html" title="Same-origin frame"></iframe>
+          <small id="out-frame-self">Check frame box above (and SW button inside)</small>
+        </footer>
+      </article>
+
+      <!-- 20. Frame: Cross-Origin -->
+      <article class="card">
+        <header>
+          <h3>🪟 Frame: Cross-Origin</h3>
+          <span id="badge-frame-cross" class="badge pending">Pending</span>
+        </header>
+        <div class="meta-row">
+          <code>frame-src</code>
+          <code>https://example.com</code>
+        </div>
+        <footer>
+          <iframe data-probe-frame="frame-cross" data-ok-msg="Loaded https://example.com" src="https://example.com" title="Cross-origin frame"></iframe>
+          <small id="out-frame-cross">Displays example.com when frame-src allows it</small>
+        </footer>
+      </article>
+
+      <!-- 21. Object: Same-Origin -->
+      <article class="card">
+        <header>
+          <h3>🧩 Object: Same-Origin</h3>
+          <span id="badge-object-self" class="badge pending">Pending</span>
+        </header>
+        <div class="meta-row">
+          <code>object-src</code>
+          <code>'self'</code>
+          <code>/frame.html</code>
+        </div>
+        <footer>
+          <object data-probe="object-self" data-ok-msg="Loaded <object data='/frame.html'>" data-err-msg="Blocked by object-src" data="/frame.html">object blocked / fallback</object>
+          <small id="out-object-self">Loading &lt;object data="/frame.html"&gt;...</small>
+        </footer>
+      </article>
+
+      <!-- 22. Manifest: Same-Origin -->
+      <article class="card">
+        <header>
+          <h3>🪪 Manifest: Same-Origin</h3>
+          <span id="badge-manifest-self" class="badge pending">Pending</span>
+        </header>
+        <div class="meta-row">
+          <code>manifest-src</code>
+          <code>'self'</code>
+          <code>/manifest.webmanifest</code>
+        </div>
+        <footer id="out-manifest-self">Requesting /manifest.webmanifest...</footer>
+      </article>
+
+      <!-- 23. Manifest: Cross-Origin -->
+      <article class="card">
+        <header>
+          <h3>🪪 Manifest: Cross-Origin</h3>
+          <span id="badge-manifest-cross" class="badge pending">Pending</span>
+        </header>
+        <div class="meta-row">
+          <code>manifest-src</code>
+          <code>https://example.com</code>
+        </div>
+        <footer id="out-manifest-cross">Requesting https://example.com/manifest.webmanifest...</footer>
+      </article>
+    </div>
+
+    <script>
+      document.getElementById('badge-inline-plain').className = 'badge allowed';
+      document.getElementById('badge-inline-plain').textContent = 'Allowed';
+      document.getElementById('out-inline-plain').textContent = 'Executed unhashed <script> via \'unsafe-inline\'';
+    </script>
+    <script data-probe="ext-script" data-ok-msg="Loaded https://www.google.com/jsapi" data-err-msg="Blocked https://www.google.com/jsapi (script-src)" src="https://www.google.com/jsapi"></script>
+    <link data-probe="ext-style" data-ok-msg="Loaded fonts.googleapis.com stylesheet" data-err-msg="Blocked fonts.googleapis.com (style-src)" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter">
+  </section>
+
+  <!-- 2. Web Workers (postMessage -> dynamic import) -->
+  <section class="panel" aria-labelledby="heading-workers">
+    <div class="section-header">
+      <h2 id="heading-workers">2. Web Workers &amp; Nested Worker Attribution</h2>
+      <p>Spawns a Dedicated Worker (testing <code>worker-src</code>), then runs dynamic <code>import('https://cdn.jsdelivr.net/npm/d3/+esm')</code> inside the worker (testing <code>script-src</code> &amp; <code>documentId</code> violation attribution).</p>
+    </div>
+
+    <div class="action-grid">
+      <button id="worker-url-btn" class="action-btn" type="button">
+        <span class="btn-title">Same-Origin Worker (<code>/worker.js</code>)</span>
+        <span class="btn-sub">Requires <code>worker-src 'self'</code> &rarr; <code>import(jsdelivr)</code></span>
+      </button>
+      <button id="worker-blob-btn" class="action-btn" type="button">
+        <span class="btn-title">Blob Worker (<code>blob:</code>)</span>
+        <span class="btn-sub">Requires <code>worker-src blob:</code> &rarr; attributed via <code>initiator</code></span>
+      </button>
+      <button id="worker-data-btn" class="action-btn" type="button">
+        <span class="btn-title">Data Worker (<code>data:</code>)</span>
+        <span class="btn-sub">Requires <code>worker-src data:</code> (opaque) &rarr; attributed via <code>documentId</code></span>
+      </button>
+      <button id="worker-chain-btn" class="action-btn" type="button">
+        <span class="btn-title">3-Hop Chain (<code>/worker.js &rarr; blob: &rarr; data:</code>)</span>
+        <span class="btn-sub">Requires <code>'self'</code> + <code>blob:</code> + <code>data:</code> &rarr; nested <code>import()</code></span>
+      </button>
+    </div>
+
+    <div class="console-box">
+      <div class="console-header">
+        <span id="worker-test-name" class="console-title">Worker Test Output</span>
+        <span id="badge-worker" class="badge">Idle</span>
+      </div>
+      <div id="worker-out" class="console-body">Click a worker test button above to spawn a worker and test dynamic import()...</div>
+    </div>
+  </section>
+
+  <!-- 3. Special Contexts, Redirects, & Scheme Edge Cases -->
+  <section class="panel" aria-labelledby="heading-special">
+    <div class="section-header">
+      <h2 id="heading-special">3. Special Contexts, Redirects, &amp; Scheme Edge Cases</h2>
+      <p>On-demand tests for opaque contexts, 302 redirect resolution, UI scaling with many/long hostnames, and non-standard URI schemes.</p>
+    </div>
+
+    <div class="subpanel-grid">
+      <!-- 3A. Context & Redirect Attribution -->
+      <div class="subpanel">
+        <h3>Opaque Contexts &amp; Redirects</h3>
+        <p>Verify CSP injection on <code>&lt;object&gt;</code> frames, <code>documentId</code> fallback for sandboxed <code>srcdoc</code>, and post-redirect <code>blocked-uri</code> resolution.</p>
+        <button id="object-btn" class="action-btn" type="button">
+          <span class="btn-title">Load <code>&lt;object data="/frame.html?fetch=1"&gt;</code></span>
+          <span class="btn-sub">Tests <code>object-src 'self'</code> + inner <code>connect-src api.github.com</code></span>
+        </button>
+        <button id="srcdoc-btn" class="action-btn" type="button">
+          <span class="btn-title">Load Sandboxed <code>srcdoc</code> <code>&lt;iframe&gt;</code></span>
+          <span class="btn-sub">Opaque origin fetching <code>https://untrusted.example.com/</code></span>
+        </button>
+        <button id="redirect-btn" class="action-btn" type="button">
+          <span class="btn-title">Load 302 Redirected Script (<code>/redirect</code>)</span>
+          <span class="btn-sub"><code>'self'</code> 302 &rarr; <code>https://cdn.jsdelivr.net/npm/d3/+esm</code></span>
+        </button>
+      </div>
+
+      <!-- 3B. UI Stress Tests -->
+      <div class="subpanel">
+        <h3>Report Panel UI &amp; Priority Scaling</h3>
+        <p>Stress-test origin tab bar wrapping (<code>div#frames</code>), source table truncation, and label-count rule priority scaling (<code>10 * L + tier</code>).</p>
+        <button id="many-frames-btn" class="action-btn" type="button">
+          <span class="btn-title">Load 10 Subdomain Frames (<code>fake1..10.localhost</code>)</span>
+          <span class="btn-sub">Populates 10 frame origins (requires <code>frame-src http:</code>)</span>
+        </button>
+        <button id="long-host-btn" class="action-btn" type="button">
+          <span class="btn-title">Load Long &amp; Deep Hostnames</span>
+          <span class="btn-sub">63-char label &amp; 17-label deep subdomain frames + subresources</span>
+        </button>
+      </div>
+
+      <!-- 3C. Non-Standard & Special Schemes -->
+      <div class="subpanel">
+        <h3>Non-Standard &amp; Special Schemes</h3>
+        <p>Test how Chromium sanitizes and reports special protocols in <code>frame-src</code>, <code>img-src</code>, and <code>connect-src</code>.</p>
+        <div class="scheme-row">
+          <select id="scheme-select" aria-label="Select scheme to test">
+            <optgroup label="Frames (frame-src)">
+              <option value="frame:about">Frame: about:blank</option>
+              <option value="frame:data">Frame: data:text/html</option>
+              <option value="frame:blob">Frame: blob: URL</option>
+              <option value="frame:javascript">Frame: javascript: URL</option>
+              <option value="frame:custom">Frame: web+custom://example.com</option>
+            </optgroup>
+            <optgroup label="Images (img-src)">
+              <option value="img:filesystem">Image: filesystem:http://example.com/...</option>
+              <option value="img:mediastream">Image: mediastream:http://example.com/...</option>
+              <option value="img:ftp">Image: ftp://ftp.example.com/dot.png</option>
+              <option value="img:custom">Image: web+custom://example.com/dot.png</option>
+            </optgroup>
+            <optgroup label="WebSockets (connect-src)">
+              <option value="ws:ws">WebSocket: ws://echo.websocket.org</option>
+              <option value="ws:wss">WebSocket: wss://echo.websocket.org</option>
+            </optgroup>
+          </select>
+          <button id="weird-schemes-btn" class="primary" type="button">Test Scheme</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="console-box">
+      <div class="console-header">
+        <div>
+          <span id="special-test-name" class="console-title">Special Context Output</span>
+          <div id="special-test-desc" class="meta-row">Select any test above to inspect its behavior and generated CSP reports.</div>
+        </div>
+        <span id="badge-special" class="badge">Idle</span>
+      </div>
+      <div id="special-out" class="console-body">No special context test run yet.</div>
+    </div>
+  </section>
+
+  <!-- 4. Service Worker & WebSockets -->
+  <section class="panel" aria-labelledby="heading-sw">
+    <div class="section-header">
+      <h2 id="heading-sw">4. Service Worker &amp; WebSockets (<code>wss://</code>)</h2>
+      <p>Tests Service Worker registration (<code>worker-src 'self'</code>), root navigation interception, and <code>wss://</code> WebSocket connections from both the page and a tabless Service Worker.</p>
+    </div>
+
+    <div class="card-grid wide">
+      <article class="card">
+        <header>
+          <h3>Root Navigation Interceptor (<code>/sw.js</code>)</h3>
+          <span id="sw-intercept-slot"><!-- SW_STATUS --><span class="badge neutral-fallback">Inactive (Direct)</span></span>
+        </header>
+        <div class="meta-row">
+          <code>FetchEvent.respondWith()</code> on <code>GET /</code>
+        </div>
+        <footer>When active, <code>/sw.js</code> intercepts <code>/</code> and reconstructs the HTML response (triggering the <code>🔧</code> badge in matrix³).</footer>
+      </article>
+
+      <article class="card">
+        <header>
+          <h3>Service Worker Registration</h3>
+          <span id="badge-sw" class="badge">Checking...</span>
+        </header>
+        <div class="meta-row">
+          <code>worker-src 'self'</code>
+          <code>/sw.js</code>
+        </div>
+        <footer id="sw-out">Click "Register Service Worker" below to install /sw.js...</footer>
+      </article>
+    </div>
+
+    <div class="action-grid">
+      <button id="sw-reg-btn" class="action-btn" type="button">
+        <span class="btn-title">Register Service Worker (<code>/sw.js</code>)</span>
+        <span class="btn-sub">Requires <code>worker-src 'self'</code> (reload after registering to control page)</span>
+      </button>
+      <button id="ws-page-btn" class="action-btn" type="button">
+        <span class="btn-title">Page WebSocket (<code>wss://</code>)</span>
+        <span class="btn-sub">Connects to <code>wss://echo.websocket.org</code> from document</span>
+      </button>
+      <button id="ws-sw-btn" class="action-btn" type="button">
+        <span class="btn-title">Service Worker WebSocket (<code>wss://</code>)</span>
+        <span class="btn-sub">Connects from <code>/sw.js</code> (tabless <code>tabId: -1</code> attribution)</span>
+      </button>
+    </div>
+
+    <div class="console-box">
+      <div class="console-header">
+        <span class="console-title">WebSocket Test Result (<code>wss://echo.websocket.org</code>)</span>
+        <span id="badge-ws" class="badge">Idle</span>
+      </div>
+      <div id="ws-out" class="console-body">Click "Page WebSocket" or "Service Worker WebSocket" above to test <code>connect-src wss://echo.websocket.org</code>...</div>
+    </div>
+  </section>
+</main>
 </body>
 </html>
