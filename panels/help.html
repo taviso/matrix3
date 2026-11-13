@@ -106,6 +106,12 @@ these options will only be visible if the sandbox is enabled.
 <p>
 Please note that cookies will not work when sandboxed without <b>Allow Same Origin</b>.
 </p>
+<p>
+The browser does not generate violation reports for blocked actions while the
+sandbox is enabled. If a site is not working, disable the sandbox and reload to
+see what resources it requires. When you disable the sandbox with no other
+rules set, matrix³ automatically falls back to the <b>First Party</b> policy.
+</p>
 <h3>Server Suggested Policy</h3>
 <p>
 Shows the policy recommended by the server for the current origin.

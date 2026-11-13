@@ -189,6 +189,13 @@ table#sandbox:not(:has(input#sandbox-enabled:checked)) tbody {
     display: none;
 }
 
+table#sandbox:has(input#sandbox-enabled:checked) caption::after {
+    content: "Disable the sandbox to see violation reports and troubleshoot this site.";
+    display: block;
+    font-size: x-small;
+    font-weight: bold;
+}
+
 body.inert :is(button, table, textarea, #trustcontrol),
 body:has(button#resume:not(:disabled)) :is(button:not(#resume, #reload), table, textarea, #trustcontrol) {
     opacity: 0.4;
