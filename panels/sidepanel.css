@@ -295,7 +295,7 @@ table#dynamic tr td:nth-of-type(2) {
 span.directive {
     cursor: default;
     margin-right: 0.15em;
-    filter: grayscale(1);
+    filter: grayscale(0.75);
 }
 
 span.directive:hover {
