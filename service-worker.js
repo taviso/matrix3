@@ -165,8 +165,12 @@ chrome.webRequest.onCompleted.addListener(async (details) => {
 
 // Record HTTP redirects so post-redirect CSP violations (where W3C CSP3 §5.3
 // sets blocked-uri to the pre-redirect URL) can be resolved to the target URL.
-chrome.webRequest.onBeforeRedirect.addListener((details) => {
-    tracker.addRedirect(details.tabId, details.url, details.redirectUrl);
+chrome.webRequest.onBeforeRedirect.addListener(async (details) => {
+    let tabIds = details.tabId !== -1
+        ? [details.tabId]
+        : await tracker.findTabsForOrigin(details.initiator);
+    for (let tabId of tabIds)
+        tracker.addRedirect(tabId, details.url, details.redirectUrl);
 }, { urls: [ "http://*/*", "https://*/*" ] });
 
 // Record each frame's documentId at commit time. resetTab clears them
