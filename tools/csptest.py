@@ -49,7 +49,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         data = urllib.parse.parse_qs(self.rfile.read(length).decode('utf-8'))
 
         if self.path == '/apply':
-            Handler.current_csp = data.get('csp', [''])[0]
+            Handler.current_csp = data.get('preset', data.get('csp', ['']))[0]
             self.send_response(HTTPStatus.SEE_OTHER)
             self.send_header('Location', '/')
             self.end_headers()

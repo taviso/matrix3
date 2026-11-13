@@ -10,13 +10,20 @@
 <form action="/apply" method="POST">
   <p><label for="csp">Content-Security-Policy:</label></p>
   <textarea id="csp" name="csp" rows="6" cols="80" autofocus>{{csp}}</textarea>
-  <p><button type="submit">Apply</button> <a href="/reset">reset csp</a></p>
+  <p>
+    <button type="submit">Apply</button>
+    <button type="submit" name="preset" value="script-src 'sha256-bT3XVZg4QeW3DXShOZHgz2VyyLQVbkGBVWcT+5q13oM='">Preset: sha256</button>
+    <button type="submit" name="preset" value="script-src 'nonce-test-nonce'">Preset: nonce</button>
+    <button type="submit" name="preset" value="script-src 'nonce-test-nonce' 'strict-dynamic'">Preset: strict-dynamic</button>
+    <a href="/reset">reset csp</a>
+  </p>
 </form>
 
 <hr>
 
 <h2>Inline script</h2>
-<script>document.write('<p>inline ran</p>');</script>
+<script nonce="test-nonce">document.write('<p>inline ran</p>');</script>
+<script>document.write('<p>unhashed inline ran</p>');</script>
 
 <h2>eval()</h2>
 <script>
