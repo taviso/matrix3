@@ -216,21 +216,15 @@ originList.addEventListener("click", (e) => {
 // 'none' must be alone in a CSP source list: checking 'none' clears the
 // column, checking anything else clears 'none'.
 function enforceNoneLeader(target) {
-    let cell = target.closest("td");
     let table = target.closest("table");
     let noneRow = utils.findTableRow(table, "'none'");
-    let col;
-    let noneBox;
-    let group;
+    let dir = target.directive;
 
-    if (!target.checked)
-        return;
-    if (!cell || !noneRow)
+    if (!target.checked || !noneRow || !dir)
         return;
 
-    col = cell.cellIndex;
-    noneBox = noneRow.cells[col].firstChild;
-    group = Array.from(table.tBodies[0].rows, r => r.cells[col].firstChild);
+    let noneBox = noneRow.directives[dir];
+    let group = Array.from(table.tBodies[0].rows, r => r.directives[dir]);
 
     if (target === noneBox)
         utils.checkboxMutex(group, noneBox);
@@ -282,7 +276,7 @@ function buildDefaultDirectivesFragment()
 function addSourceCheckboxRow(source, container = directivesTable.tBodies[0])
 {
     // Check if it already exists in the container (which might be a fragment)
-    let existing = Array.from(container.children).find(r => r.cells[0]?.textContent === source);
+    let existing = Array.from(container.children).find(r => r.source === source);
     let cols = utils.getTableColProps(directivesTable, "id");
     let colNodes = directivesTable.querySelectorAll("colgroup col");
     let row;
@@ -292,6 +286,8 @@ function addSourceCheckboxRow(source, container = directivesTable.tBodies[0])
         return existing;
 
     row = document.createElement("tr");
+    row.source = source;
+    row.directives = Object.create(null);
     title = document.createElement("th");
 
     title.append(utils.formatSource(source));
@@ -304,7 +300,9 @@ function addSourceCheckboxRow(source, container = directivesTable.tBodies[0])
         box.type = "checkbox";
         box.checked = false;
         box.className = "rule";
+        box.directive = cols[i];
         box.title = sidepanel.getRuleTooltip(source, cols[i]);
+        row.directives[cols[i]] = box;
 
         if (colNodes[i].classList.contains("advanced"))
             cell.classList.add("advanced");
@@ -319,10 +317,9 @@ function addSourceCheckboxRow(source, container = directivesTable.tBodies[0])
 function findCheckbox(source, directive, autoAdd, container = directivesTable.tBodies[0])
 {
     let cols = utils.getTableColProps(directivesTable, "id");
-    let row = Array.from(container.children).find(r => r.cells[0]?.textContent === source);
-    let colNum = cols.indexOf(directive);
+    let row = Array.from(container.children).find(r => r.source === source);
 
-    if (colNum == -1) {
+    if (!cols.includes(directive)) {
         console.debug("report", `column for directive ${directive} does not exist`);
         return null;
     }
@@ -331,7 +328,7 @@ function findCheckbox(source, directive, autoAdd, container = directivesTable.tB
         row = addSourceCheckboxRow(source, container);
     }
 
-    return row?.cells[colNum].firstChild ?? null;
+    return row?.directives[directive] ?? null;
 }
 
 function setSourceCheckboxState(source, directive, state, className, container = directivesTable.tBodies[0])
@@ -362,22 +359,16 @@ function getSourceCheckboxState(source, directive, container = directivesTable.t
 // implicitly wide-open. It's one step less strict than 'none', which is more
 // convenient than a bare default-src. Skipped when sandbox is enabled.
 async function fallbackToFirstParty(container = directivesTable.tBodies[0]) {
-    let col;
-    let boxes;
-    let policy;
-    let columns;
-
     if (document.querySelector("input#sandbox-enabled").checked)
         return;
 
-    col = utils.getTableColProps(directivesTable, "id").indexOf("default-src");
-    boxes = Array.from(container.children, r => r.cells[col].firstChild);
+    let boxes = Array.from(container.children, r => r.directives["default-src"]);
 
     if (boxes.some(b => b.checked))
         return;
 
-    policy = await RulesManager.getRulesetPolicy("firstparty");
-    columns = utils.getTableColProps(directivesTable, "id");
+    let policy = await RulesManager.getRulesetPolicy("firstparty");
+    let columns = utils.getTableColProps(directivesTable, "id");
 
     for (let [directive, sources] of Object.entries(policy.directives)) {
         let dir = Policy.collapseDirective(directive);
@@ -390,9 +381,7 @@ async function fallbackToFirstParty(container = directivesTable.tBodies[0]) {
 // since they're noisy and rarely toggled.
 function compareSourceRows(a, b) {
     let isHash = l => Policy.isNonceOrHash(l);
-    let al = a.cells[0].textContent;
-    let bl = b.cells[0].textContent;
-    return (isHash(al) - isHash(bl)) || al.localeCompare(bl);
+    return (isHash(a.source) - isHash(b.source)) || a.source.localeCompare(b.source);
 }
 
 async function getCurrentRules(hostName, container)

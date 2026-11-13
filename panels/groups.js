@@ -29,8 +29,6 @@ function addSourceRow(table, groupName, source, directives) {
     let title = document.createElement("th");
     let delBtn = document.createElement("button");
 
-    row.dataset.origin = source;
-
     delBtn.className = "delorigin";
     delBtn.title = "Remove";
     delBtn.textContent = "×";
@@ -47,6 +45,8 @@ function addSourceRow(table, groupName, source, directives) {
         box.checked = directives.includes(cols[i]);
         box.indeterminate = directives.includes(`!${cols[i]}`);
         box.className = "rule";
+        box.origin = source;
+        box.directive = cols[i];
         updateBoxTooltip(box, groupName, source, cols[i]);
 
         if (colNodes[i].classList.contains("advanced"))
@@ -64,7 +64,6 @@ function updateGroupsDisplay() {
         let g = groupTemplate.content.cloneNode(true).firstElementChild;
         let table = g.querySelector('table.sources');
         let input = g.querySelector('.neworigin');
-        let cols = utils.getTableColProps(table, "id");
 
         g.dataset.name = name;
         g.querySelector('.group-name').textContent = name;
@@ -84,11 +83,7 @@ function updateGroupsDisplay() {
 
         table.addEventListener('change', async (event) => {
             let box = event.target;
-            let row = box.closest('tr');
-            if (!row)
-                return;
-            let origin = row.dataset.origin;
-            let dir = cols[box.closest('td').cellIndex];
+            let { origin, directive: dir } = box;
             let prev = groups[name]?.[origin];
             if (!prev)
                 return;
