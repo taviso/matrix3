@@ -224,6 +224,10 @@ textarea#servercsp:empty {
 
 /* Make the origin selector look like tabs */
 div#frames {
+    display: flex;
+    flex-wrap: wrap-reverse;
+    align-items: flex-start;
+    max-width: 100cqi;
     background: linear-gradient(CanvasText, CanvasText) left bottom / 1px calc(100% - 4px) no-repeat;
 }
 
