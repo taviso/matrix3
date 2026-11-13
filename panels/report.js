@@ -498,6 +498,9 @@ async function populateOriginList(preferredDomain, tab) {
     tab ??= await sidepanel.getActiveTab();
     let frames = (await chrome.webNavigation.getAllFrames({tabId: tab.id}).catch(() => []) ?? [])
                      .filter(f => f.documentLifecycle === "active");
+    let workers = await chrome.runtime.sendMessage({
+        command: MessageTypes.REQ_WORKERS
+    }).catch(() => []) ?? [];
     let domains = new Map();
     let topDomain;
 
@@ -523,11 +526,13 @@ async function populateOriginList(preferredDomain, tab) {
     for (let [domain, protocol] of domains) {
         let btn = document.createElement("button");
         let span = document.createElement("span");
+        let sw = unregistersw.cloneNode(true);
         btn.title = domain;
         btn.dataset.value = domain;
         btn.dataset.protocol = protocol;
         span.textContent = domain;
-        btn.append(span, unregistersw.cloneNode(true));
+        sw.disabled = !workers.includes(domain);
+        btn.append(span, sw);
         originList.appendChild(btn);
     }
 
