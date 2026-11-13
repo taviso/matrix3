@@ -8,9 +8,9 @@ import { MessageTypes } from '/include/commands.js'
 let RulesManager = sidepanel.RulesManager;
 let groups = await Options.getGroups();
 
-// Attach tooltips to the static sandbox checkboxes.
+// Attach tooltips to the static sandbox rows.
 document.querySelectorAll("td input.sandbox").forEach(box => {
-    box.title = sidepanel.helpData.sandbox[box.id] ?? "";
+    box.closest("tr").title = sidepanel.helpData.sandbox[box.id] ?? "";
 });
 
 // Populate the source directive tables from the shared template.

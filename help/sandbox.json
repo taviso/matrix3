@@ -1,17 +1,19 @@
 {
   "sandbox": {
-    "allow-downloads": "Allows downloading files.",
-    "allow-forms": "Allows the page to submit forms. If this keyword is not used, form will be displayed as normal, but submitting it will not trigger input validation, sending data to a web server or closing a dialog.",
-    "allow-modals": "Allows the page to open modal windows (e.g., window.alert(), window.confirm(), window.print(), and <dialog> elements).",
-    "allow-orientation-lock": "Allows the page to lock the screen orientation.",
-    "allow-pointer-lock": "Allows the page to use the Pointer Lock API.",
-    "allow-popups": "Allows popups (like window.open(), target=\"_blank\", and showModalDialog()). If this keyword is not used, the popup will silently fail to open.",
-    "allow-popups-to-escape-sandbox": "Allows a sandboxed document to open new windows without forcing the sandboxing flags upon them.",
-    "allow-presentation": "Allows embedders to have control over whether an iframe can start a presentation session.",
-    "allow-same-origin": "If this token is not used, the resource is treated as being from a special origin that always fails the same-origin policy (potentially preventing access to data storage/cookies and some JavaScript APIs).",
-    "allow-scripts": "Allows the page to run scripts (but not create popups). If this keyword is not used, this operation is not allowed.",
-    "allow-top-navigation": "Allows the resource to navigate the top-level browsing context (the one named _top).",
-    "allow-top-navigation-by-user-activation": "Allows the resource to navigate the top-level browsing context, but only if initiated by a user gesture.",
-    "allow-top-navigation-to-custom-protocols": "Allows navigations to non-http protocols built into browser or registered by a web site."
+    "sandbox-enabled": "Isolate this origin in a sandbox, disabling scripts, cookies, forms, popups, and downloads.",
+    "allow-downloads": "Allow the page to trigger file downloads.",
+    "allow-forms": "Allow the page to submit forms.",
+    "allow-modals": "Allow modal dialogs such as alert(), confirm(), and print().",
+    "allow-orientation-lock": "Allow locking the screen orientation.",
+    "allow-pointer-lock": "Allow capturing the mouse cursor (Pointer Lock API).",
+    "allow-popups": "Allow opening new windows or tabs (e.g. target=\"_blank\" or window.open).",
+    "allow-popups-to-escape-sandbox": "Allow popups opened by this page to run without inheriting the sandbox.",
+    "allow-presentation": "Allow starting presentation or casting sessions.",
+    "allow-same-origin": "Keep the page's normal origin so it can access its cookies and local storage.",
+    "allow-scripts": "Allow the page to run scripts.",
+    "allow-storage-access-by-user-activation": "Allow embedded frames to request cookie access when clicked.",
+    "allow-top-navigation": "Allow embedded frames to navigate the main tab.",
+    "allow-top-navigation-by-user-activation": "Allow embedded frames to navigate the main tab only when clicked.",
+    "allow-top-navigation-to-custom-protocols": "Allow opening external app links (e.g. mailto:, tel:, or custom schemes)."
   }
 }
