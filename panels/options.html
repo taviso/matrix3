@@ -17,41 +17,41 @@
         <thead>
         </thead>
         <tbody>
-            <tr>
+            <tr title="Policy applied to sites that do not have custom rules">
                 <td><label for=defaultpolicy>Default Policy Strictness</label></td>
                 <td>
                     <datalist id=policies>
-                        <option value=0 label="Permissive" />
-                        <option value=1 label="First Party" />
-                        <option value=2 label="Sandbox + Scripts" />
-                        <option value=3 label="Sandbox" />
-                        <option value=4 label="Strict" />
+                        <option value=0 label="Permissive" title="Permissive: Allow everything" />
+                        <option value=1 label="First Party" title="First Party: Block third-party scripts" />
+                        <option value=2 label="Sandbox + Scripts" title="Sandbox: Strict isolated origin, scripts and forms allowed" />
+                        <option value=3 label="Sandbox" title="Sandbox: Strict isolated origin, static content only" />
+                        <option value=4 label="Strict" title="Strict: Only first-party styles and images" />
                     </datalist>
                     <input type=range list=policies id=defaultpolicy min=0 max=4 step=1 value=0 class=option />
                 </td>
             </tr>
-            <tr>
+            <tr title="Show rarely used directives and extra sandbox flags even when inactive">
                 <td><label for=advanced>Always Show Advanced Directives</label></td>
                 <td><input type=checkbox id=advanced class=option /></td>
             </tr>
-            <tr>
+            <tr title="Display a badge on the toolbar icon when a CSP violation is detected">
                 <td><label for=badges>Show Icon Badges</label></td>
                 <td><input type=checkbox id=badges class=option /></td>
             </tr>
-            <tr>
+            <tr title="Ask for confirmation before destructive actions, like deleting rules">
                 <td><label for=confirmactions>Confirm Actions</label></td>
                 <td><input type=checkbox id=confirmactions class=option /></td>
             </tr>
-            <tr>
+            <tr title="Group rules and violations by domain (*.example.com) or by hostname (sub.example.com)">
                 <td><label for=defaultscope>Default Scope</label></td>
                 <td>
                     <select id=defaultscope class=option>
-                      <option value="domain">Domain</option>
-                      <option value="host">Host</option>
+                      <option value="domain" title="Share rules across subdomains (e.g. *.example.com)">Domain</option>
+                      <option value="host" title="Create separate rules for each subdomain (e.g. sub.example.com)">Host</option>
                     </select>
                 </td>
             </tr>
-            <tr>
+            <tr title="Treat shared hosting domains (like github.io or s3.amazonaws.com) as separate origins">
                 <td><label for=privatedomains>Allow Private Domains</label></td>
                 <td><input type=checkbox id=privatedomains class=option /></td>
             </tr>

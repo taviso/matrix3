@@ -5,9 +5,9 @@ const optionElements = document.querySelectorAll(".option");
 const policyRange = document.getElementById("defaultpolicy");
 const options = await Options.get();
 
-function updatePolicyTitle() {
-    let opt = policyRange.list?.querySelector(`option[value="${policyRange.value}"]`);
-    policyRange.title = opt?.label ?? "";
+function updatePolicyTitle(val = policyRange.value) {
+    let opt = policyRange.list?.querySelector(`option[value="${val}"]`);
+    policyRange.title = opt?.title || opt?.label || "";
 }
 
 function syncOptionChanges(event) {
@@ -37,7 +37,13 @@ function updateOptions() {
 
 // Watch for changes, then sync them to the options object.
 optionElements.forEach(el => el.addEventListener("change", syncOptionChanges));
-policyRange.addEventListener("input", updatePolicyTitle);
+policyRange.addEventListener("input", () => updatePolicyTitle());
+policyRange.addEventListener("mousemove", (e) => {
+    let max = Number(policyRange.max) || 4;
+    let idx = Math.min(max, Math.max(0, Math.round((e.offsetX / policyRange.clientWidth) * max)));
+    updatePolicyTitle(idx);
+});
+policyRange.addEventListener("mouseleave", () => updatePolicyTitle());
 
 Options.addUpdateListener(updateOptions);
 updateOptions();
