@@ -288,10 +288,15 @@ table#dynamic tr td:nth-of-type(2) {
 span.directive {
     cursor: default;
     margin-right: 0.15em;
+    filter: grayscale(1);
+}
+
+span.directive:hover {
+    filter: none;
 }
 
 span.directive.disabled {
-    filter: grayscale(1);
+    text-decoration: line-through dotted red 3px;
 }
 
 span.directive.unused {
