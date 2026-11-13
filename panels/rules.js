@@ -8,6 +8,38 @@ const dynamicTbl = document.getElementById('dynamic');
 const sessionTbl = document.getElementById('session');
 const staticTbl = document.getElementById('static');
 
+const kDirectiveIcons = [
+    ["📌", "default-src"],
+    ["📜", "script-src"],
+    ["🦚", "style-src"],
+    ["🖼️", "img-src"],
+    ["🪟", "frame-src"],
+    ["🔤", "font-src"],
+    ["📽️", "media-src"],
+    ["🔌", "connect-src"],
+    ["🔧", "worker-src"],
+    ["⚙️", "child-src", "manifest-src", "object-src"],
+    ["🔒", "sandbox"],
+];
+
+function renderPolicyCell(cell, pol) {
+    for (let [icon, ...dirs] of kDirectiveIcons) {
+        let active = dirs.filter(d => d in pol.directives);
+        let span = document.createElement("span");
+        span.className = "directive";
+        span.textContent = icon;
+        span.title = active.map(d => `${d}: ${pol.directives[d].join(" ")}`).join("; ");
+        span.classList.toggle("unused", !active.length);
+        span.classList.toggle("disabled", active.length > 0 && active.every(d => pol.directives[d].includes("'none'")));
+        cell.appendChild(span);
+    }
+
+    let raw = document.createElement("span");
+    raw.hidden = true;
+    raw.textContent = pol.toHeader();
+    cell.appendChild(raw);
+}
+
 function updateRuleTables() {
     return utils.callWithLock("rules", async () => {
         let rules = RulesManager.getRules().sort((a, b) => a.host.localeCompare(b.host));
@@ -29,10 +61,10 @@ function updateRuleTables() {
             chk.className = "rule";
             chk.dataset.id = rule.id;
             row.insertCell(-1).appendChild(chk);
-            row.insertCell(-1).innerText = rule.host;
-            let cell = row.insertCell(-1);
-            cell.innerText = pol.toHeader();
-            cell.title = cell.innerText;
+            let hostCell = row.insertCell(-1);
+            hostCell.innerText = rule.host;
+            hostCell.title = rule.host;
+            renderPolicyCell(row.insertCell(-1), pol);
         }
 
         utils.clearTable(staticTbl);
@@ -66,14 +98,14 @@ function getRuleRows(table) {
 function selectAll(table) {
     const filterText = document.getElementById('filter').value.toLowerCase();
     getRuleRows(table)
-        .filter(r => r.innerText.toLowerCase().includes(filterText))
+        .filter(r => r.textContent.toLowerCase().includes(filterText))
         .forEach(r => r.cells[0].firstChild.checked = true);
 }
 
 function invertSelection(table) {
     const filterText = document.getElementById('filter').value.toLowerCase();
     getRuleRows(table)
-        .filter(r => r.innerText.toLowerCase().includes(filterText))
+        .filter(r => r.textContent.toLowerCase().includes(filterText))
         .forEach(r => r.cells[0].firstChild.checked = !r.cells[0].firstChild.checked);
 }
 
@@ -81,7 +113,7 @@ function applyFilter() {
     const filterText = document.getElementById('filter').value.toLowerCase();
     getRuleRows().forEach(r => r.hidden = false);
     getRuleRows()
-        .filter(r => !r.innerText.toLowerCase().includes(filterText))
+        .filter(r => !r.textContent.toLowerCase().includes(filterText))
         .forEach(r => r.hidden = true);
 }
 

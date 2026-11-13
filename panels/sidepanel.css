@@ -272,14 +272,27 @@ table#dynamic td {
     white-space: nowrap;
 }
 
-/* The rule policy text */
-table#session tr td:last-of-type,
-table#dynamic tr td:last-of-type {
-    font-size: smaller;
+table#session tr td:nth-of-type(2),
+table#dynamic tr td:nth-of-type(2) {
     width: 100%;
     max-width: 0;
+    min-width: 6ch;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+span.directive {
+    cursor: default;
+    margin-right: 0.15em;
+}
+
+span.directive.disabled {
+    filter: grayscale(1);
+    opacity: 0.75;
+}
+
+span.directive.unused {
+    visibility: hidden;
 }
 
 /* Groups panel */
