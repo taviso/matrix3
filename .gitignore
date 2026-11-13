@@ -2,6 +2,7 @@
 *.png
 *.zip
 *.crx
+version.json
 _metadata/
 *.md
 !README.md

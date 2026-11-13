@@ -2,14 +2,44 @@
 <head>
     <title>About</title>
     <meta charset="UTF-8">
-    <script src="/include/sidepanel.js" type="module"></script>
+    <script src="about.js" type="module"></script>
     <link rel="stylesheet" href="sidepanel.css">
 </head>
 <body>
 <select id="panel"></select>
 <h1>About</h1>
 <p class="subtitle">
-This is <abbr title="matrix cubed">matrix³</abbr>, a manifest v3 content policy manager.
+This is <abbr title="matrix cubed">matrix³</abbr> <span id="version"></span>, a manifest v3 content policy manager.
+</p>
+<p id="stats"></p>
+<table id="topdirectives">
+    <caption>Most Used Directives</caption>
+    <thead>
+        <tr>
+            <th>Directive</th>
+            <th>Count</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+<br>
+<table id="topsources">
+    <caption>Most Used Sources</caption>
+    <thead>
+        <tr>
+            <th>Source</th>
+            <th>Count</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+<p>
+matrix³ is free software licensed under the
+<a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank">GNU General Public License v3.0</a>.
+</p>
+<p>
+Source code is available on <a href="https://github.com/taviso/matrix3" target="_blank">GitHub</a>.
+Please report bugs and feature requests on the <a href="https://github.com/taviso/matrix3/issues" target="_blank">issue tracker</a>.
 </p>
 </body>
 </html>

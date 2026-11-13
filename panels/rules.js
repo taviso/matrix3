@@ -8,22 +8,13 @@ const dynamicTbl = document.getElementById('dynamic');
 const sessionTbl = document.getElementById('session');
 const staticTbl = document.getElementById('static');
 
-const kDirectiveIcons = [
-    ["📌", "default-src"],
-    ["📜", "script-src"],
-    ["🦚", "style-src"],
-    ["🖼️", "img-src"],
-    ["🪟", "frame-src"],
-    ["🔤", "font-src"],
-    ["📽️", "media-src"],
-    ["🔌", "connect-src"],
-    ["🔧", "worker-src"],
-    ["⚙️", "child-src", "manifest-src", "object-src"],
-    ["🔒", "sandbox"],
-];
+const kDirectiveGroups = Map.groupBy(
+    Object.keys(sidepanel.helpData.directives),
+    d => sidepanel.helpData.directives[d].advanced ? "⚙️" : sidepanel.helpData.directives[d].icon
+);
 
 function renderPolicyCell(cell, pol) {
-    for (let [icon, ...dirs] of kDirectiveIcons) {
+    for (let [icon, dirs] of kDirectiveGroups) {
         let active = dirs.filter(d => d in pol.directives);
         let span = document.createElement("span");
         span.className = "directive";

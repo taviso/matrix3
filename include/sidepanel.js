@@ -29,7 +29,7 @@ try {
 export function getRuleTooltip(source, directive)
 {
     let sourceHelp = helpData.sources.find(h => h.regex.test(source));
-    let directiveHelp = helpData.directives[directive];
+    let directiveHelp = helpData.directives[directive]?.description;
     let title = "";
 
     if (directiveHelp)

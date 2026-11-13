@@ -1,19 +1,59 @@
 {
   "directives": {
-    "default-src": "The fallback for other fetch directives that aren't explicitly specified.",
-    "script-src": "Controls which scripts can be executed on the page.",
-    "style-src": "Controls which stylesheets can be applied to the page.",
-    "img-src": "Controls which images can be loaded on the page.",
-    "font-src": "Controls which fonts can be loaded on the page.",
-    "connect-src": "Controls which origins can be reached via Fetch, XHR, WebSockets, etc.",
-    "child-src": "Defines the valid sources for web workers and nested browsing contexts (like iframes).",
-    "frame-src": "Controls which origins can be embedded as iframes.",
-    "object-src": "Controls which origins can be embedded via <object>, <embed>, or <applet>.",
-    "media-src": "Controls which origins can provide audio and video resources.",
-    "manifest-src": "Controls which origins can provide the web app manifest, which defines how the application looks and behaves when installed on a device (e.g. name, icons, and theme).",
-    "worker-src": "Controls which origins can provide Web, Shared, or Service Worker scripts. Workers can complicate content security policy enforcement.",
-    "base-uri": "Restricts the URLs which can be used in a document's <base> element.",
-    "form-action": "Restricts the URLs which can be used as the target of a form submission.",
-    "frame-ancestors": "Restricts which origins can embed the current page as a frame."
+    "default-src": {
+      "icon": "📌",
+      "description": "The fallback for other fetch directives that aren't explicitly specified."
+    },
+    "script-src": {
+      "icon": "📜",
+      "description": "Controls which scripts can be executed on the page."
+    },
+    "style-src": {
+      "icon": "🦚",
+      "description": "Controls which stylesheets can be applied to the page."
+    },
+    "img-src": {
+      "icon": "🖼️",
+      "description": "Controls which images can be loaded on the page."
+    },
+    "frame-src": {
+      "icon": "🪟",
+      "description": "Controls which origins can be embedded as iframes."
+    },
+    "font-src": {
+      "icon": "🔤",
+      "description": "Controls which fonts can be loaded on the page."
+    },
+    "media-src": {
+      "icon": "📽️",
+      "description": "Controls which origins can provide audio and video resources."
+    },
+    "connect-src": {
+      "icon": "🔌",
+      "description": "Controls which origins can be reached via Fetch, XHR, WebSockets, etc."
+    },
+    "worker-src": {
+      "icon": "🔧",
+      "description": "Controls which origins can provide Web, Shared, or Service Worker scripts. Workers can complicate content security policy enforcement."
+    },
+    "child-src": {
+      "icon": "👶",
+      "advanced": true,
+      "description": "Defines the valid sources for web workers and nested browsing contexts (like iframes)."
+    },
+    "manifest-src": {
+      "icon": "🪪",
+      "advanced": true,
+      "description": "Controls which origins can provide the web app manifest, which defines how the application looks and behaves when installed on a device (e.g. name, icons, and theme)."
+    },
+    "object-src": {
+      "icon": "🧩",
+      "advanced": true,
+      "description": "Controls which origins can be embedded via <object>, <embed>, or <applet>."
+    },
+    "sandbox": {
+      "icon": "🔒",
+      "description": "Isolates the document in a unique origin and blocks scripts, cookies, forms, popups, and downloads unless explicitly allowed."
+    }
   }
 }

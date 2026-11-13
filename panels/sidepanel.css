@@ -354,6 +354,31 @@ textarea#export {
     display: none;
 }
 
+/* About panel */
+table#topdirectives,
+table#topsources {
+    font-family: monospace;
+}
+
+table#topdirectives:not(:has(tbody tr)),
+table#topsources:not(:has(tbody tr)) {
+    display: none;
+}
+
+table#topdirectives td:first-child,
+table#topsources td:first-child {
+    width: 100%;
+    max-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+table#topdirectives td:last-child,
+table#topsources td:last-child {
+    text-align: right;
+}
+
 /* Help panel */
 summary {
     font-weight: bold;
