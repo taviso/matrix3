@@ -50,20 +50,39 @@ function updateRuleTables() {
         }
 
         applyFilter();
-        document.getElementById('reset').disabled = rules.length === 0;
+        document.getElementById('remove').disabled = rules.length === 0;
         document.getElementById('commit').disabled = !rules.some(r => r.isSession);
+        document.getElementById('selectdynamic').disabled = !rules.some(r => !r.isSession);
+        document.getElementById('invertdynamic').disabled = !rules.some(r => !r.isSession);
+        document.getElementById('selectsession').disabled = !rules.some(r => r.isSession);
+        document.getElementById('invertsession').disabled = !rules.some(r => r.isSession);
     });
+}
+
+function getRuleRows(table) {
+    return Array.from(table ? table.rows : document.querySelectorAll('#dynamic tr, #session tr'));
+}
+
+function selectAll(table) {
+    const filterText = document.getElementById('filter').value.toLowerCase();
+    getRuleRows(table)
+        .filter(r => r.innerText.toLowerCase().includes(filterText))
+        .forEach(r => r.cells[0].firstChild.checked = true);
+}
+
+function invertSelection(table) {
+    const filterText = document.getElementById('filter').value.toLowerCase();
+    getRuleRows(table)
+        .filter(r => r.innerText.toLowerCase().includes(filterText))
+        .forEach(r => r.cells[0].firstChild.checked = !r.cells[0].firstChild.checked);
 }
 
 function applyFilter() {
     const filterText = document.getElementById('filter').value.toLowerCase();
-    for (let row of document.querySelectorAll('#dynamic tr, #session tr')) {
-        if (row.innerText.toLowerCase().includes(filterText)) {
-            row.style.display = '';
-        } else {
-            row.style.display = 'none';
-        }
-    }
+    getRuleRows().forEach(r => r.hidden = false);
+    getRuleRows()
+        .filter(r => !r.innerText.toLowerCase().includes(filterText))
+        .forEach(r => r.hidden = true);
 }
 
 document.getElementById('filter').addEventListener('input', applyFilter);
@@ -96,12 +115,10 @@ document.getElementById('commit').addEventListener("click", async () => {
     }
     updateRuleTables();
 });
-document.getElementById('reset').addEventListener("click", async () => {
-    if (!await utils.confirmAction("Remove all session and dynamic rules?"))
-        return;
-    await RulesManager.resetAllRules();
-    updateRuleTables();
-});
+document.getElementById('selectdynamic').addEventListener("click", () => selectAll(dynamicTbl));
+document.getElementById('invertdynamic').addEventListener("click", () => invertSelection(dynamicTbl));
+document.getElementById('selectsession').addEventListener("click", () => selectAll(sessionTbl));
+document.getElementById('invertsession').addEventListener("click", () => invertSelection(sessionTbl));
 
 chrome.runtime.onMessage.addListener((msg) => {
     switch (msg.command) {
