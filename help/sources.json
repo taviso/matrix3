@@ -63,7 +63,7 @@
     {
       "name": "*",
       "regex": "^\\*$",
-      "description": "Allows loading resources from any network origin (but not data:, blob:, or filesystem: URLs). Substituted when the browser blocks a cross-origin redirect and withholds its address for privacy."
+      "description": "Allows loading resources from any network origin (but not data:, blob:, or filesystem: URLs)."
     },
     {
       "name": "https:",

@@ -223,15 +223,22 @@ textarea#servercsp:empty {
 }
 
 /* Make the origin selector look like tabs */
+div#frames {
+    background: linear-gradient(CanvasText, CanvasText) left bottom / 1px calc(100% - 4px) no-repeat;
+}
+
 div#frames > button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     vertical-align: bottom;
-    background: transparent;
-    border: 1px solid currentColor;
+    background: color-mix(in srgb, transparent, CanvasText 10%);
+    color: color-mix(in srgb, CanvasText, transparent 35%);
+    border: 1px solid CanvasText;
     border-radius: 3px 3px 0 0;
+    margin-top: 4px;
     margin-bottom: -1px;
+    padding-block: 1px;
 }
 
 div#frames > button > span {
@@ -242,11 +249,15 @@ div#frames > button > span {
 
 div#frames > button.active {
     background: Canvas;
+    color: CanvasText;
     border-bottom-color: Canvas;
+    margin-top: 2px;
+    padding-top: 3px;
 }
 
 div#frames > button:not(.active):hover {
-    background: color-mix(in srgb, transparent, CanvasText 8%);
+    background: color-mix(in srgb, transparent, CanvasText 18%);
+    color: CanvasText;
     cursor: pointer;
 }
 

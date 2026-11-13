@@ -10,10 +10,10 @@ export default class CspReport {
             return null;
 
         if (uri === "") {
-            // Browser redacts the blocked URL for privacy (cross-origin
-            // redirects, notably under frame-src). The real scheme is hidden,
-            // so represent it as an opaque source.
-            return new URL("opaque:");
+            // For frame-src, Chromium's SanitizeDataForUseInCspViolation calls
+            // GURL::DeprecatedGetOriginAsURL(), which returns an empty URL for
+            // non-standard opaque schemes like data:.
+            return new URL("data:");
         }
 
         // CSP keywords like 'inline' or 'eval' won't parse as URLs without a
@@ -79,11 +79,6 @@ export default class CspReport {
                 return "'unsafe-eval'";
             case "wasm-eval:":
                 return "'wasm-unsafe-eval'";
-            case "opaque:":
-                // Redacted blocked-uri (cross-origin redirect): target origin is
-                // hidden, so substitute the wildcard source.
-                console.warn("cspreport", "redacted blocked-uri, substituting wildcard source");
-                return "*";
             case "about:":
             case "data:":
             case "blob:":

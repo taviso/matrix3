@@ -131,6 +131,24 @@ document.getElementById('worker-chain-btn').addEventListener('click', async () =
 <p>
   <button id="object-btn" type="button">Load &lt;object data="/frame.html?fetch=1"&gt;</button>
   <button id="srcdoc-btn" type="button">Load &lt;iframe sandbox="allow-scripts" srcdoc="..."&gt;</button>
+  <button id="many-frames-btn" type="button">Load 10 frames (fake1..10.localhost)</button>
+  <button id="long-host-btn" type="button">Load long &amp; deep hostnames</button>
+</p>
+<p>
+  <select id="scheme-select">
+    <option value="frame:about">Frame: about:blank</option>
+    <option value="frame:data">Frame: data:text/html</option>
+    <option value="frame:blob">Frame: blob: URL</option>
+    <option value="frame:javascript">Frame: javascript: URL</option>
+    <option value="frame:custom">Frame: web+custom://example.com</option>
+    <option value="img:filesystem">Image: filesystem:http://example.com/...</option>
+    <option value="img:mediastream">Image: mediastream:http://example.com/...</option>
+    <option value="img:ftp">Image: ftp://ftp.example.com/dot.png</option>
+    <option value="img:custom">Image: web+custom://example.com/dot.png</option>
+    <option value="ws:ws">WebSocket: ws://echo.websocket.org</option>
+    <option value="ws:wss">WebSocket: wss://echo.websocket.org</option>
+  </select>
+  <button id="weird-schemes-btn" type="button">Test selected scheme</button>
 </p>
 <div id="special-out"></div>
 <script>
@@ -156,14 +174,95 @@ document.getElementById('srcdoc-btn').addEventListener('click', () => {
   <\/script></body>`;
   container.replaceChildren(ifr);
 });
+
+document.getElementById('many-frames-btn').addEventListener('click', () => {
+  const container = document.getElementById('special-out');
+  const port = location.port ? `:${location.port}` : '';
+  container.replaceChildren(...Array.from({ length: 10 }, (_, i) => {
+    const ifr = document.createElement('iframe');
+    ifr.src = `http://fake${i + 1}.localhost${port}/frame.html?t=${Date.now()}`;
+    ifr.width = '180';
+    ifr.height = '40';
+    return ifr;
+  }));
+});
+
+document.getElementById('long-host-btn').addEventListener('click', () => {
+  const container = document.getElementById('special-out');
+  const port = location.port ? `:${location.port}` : '';
+  const hosts = [
+    'supercalifragilisticexpialidocious-extremely-long-hostname-test.localhost',
+    'a.b.c.d.e.f.g.h.i.j.k.l.m.n.o.p.deep-labels.localhost',
+  ];
+  container.replaceChildren(...hosts.map(h => {
+    const ifr = document.createElement('iframe');
+    ifr.src = `http://${h}${port}/frame.html?fetch=1&t=${Date.now()}`;
+    ifr.width = '360';
+    ifr.height = '45';
+    return ifr;
+  }));
+  fetch('https://supercalifragilisticexpialidocious-extremely-long-subresource-host.example.com/').catch(() => {});
+  fetch('https://a.b.c.d.e.f.g.h.i.j.k.l.m.n.o.p.deep-subresource.example.com/').catch(() => {});
+});
+
+document.getElementById('weird-schemes-btn').addEventListener('click', () => {
+  const container = document.getElementById('special-out');
+  const choice = document.getElementById('scheme-select').value;
+  container.replaceChildren();
+
+  switch (choice) {
+    case 'frame:about':
+    case 'frame:data':
+    case 'frame:blob':
+    case 'frame:javascript':
+    case 'frame:custom': {
+      const urls = {
+        'frame:about': 'about:blank',
+        'frame:data': 'data:text/html,<body>data frame</body>',
+        'frame:blob': URL.createObjectURL(new Blob(['<body>blob frame</body>'], { type: 'text/html' })),
+        'frame:javascript': 'javascript:"<body>javascript frame</body>"',
+        'frame:custom': 'web+custom://example.com/frame',
+      };
+      const ifr = document.createElement('iframe');
+      ifr.src = urls[choice];
+      ifr.width = '300';
+      ifr.height = '45';
+      container.appendChild(ifr);
+      break;
+    }
+    case 'img:filesystem':
+    case 'img:mediastream':
+    case 'img:ftp':
+    case 'img:custom': {
+      const urls = {
+        'img:filesystem': 'filesystem:http://example.com/temporary/dot.png',
+        'img:mediastream': 'mediastream:http://example.com/stream',
+        'img:ftp': 'ftp://ftp.example.com/dot.png',
+        'img:custom': 'web+custom://example.com/dot.png',
+      };
+      const img = document.createElement('img');
+      img.src = urls[choice];
+      img.alt = choice;
+      container.appendChild(img);
+      break;
+    }
+    case 'ws:ws':
+      try { new WebSocket('ws://echo.websocket.org'); } catch {}
+      break;
+    case 'ws:wss':
+      try { new WebSocket('wss://echo.websocket.org'); } catch {}
+      break;
+  }
+});
 </script>
 
 <hr>
 
 <h2>Service Worker</h2>
 <p><b>Interceptor Status:</b> <!-- SW_STATUS --></p>
-<div id="sw-out">Checking service worker status...</div>
+<div id="sw-out">Click Register Service Worker to install /sw.js...</div>
 <p>
+  <button id="sw-reg-btn" type="button">Register Service Worker (/sw.js)</button>
   <button id="ws-page-btn" type="button">Page WebSocket (wss://)</button>
   <button id="ws-sw-btn" type="button">SW WebSocket (wss://)</button>
 </p>
@@ -191,18 +290,18 @@ document.getElementById('ws-page-btn').addEventListener('click', () => {
 document.getElementById('ws-sw-btn').addEventListener('click', () => {
   const out = document.getElementById('ws-out');
   if (!navigator.serviceWorker?.controller) {
-    out.textContent = 'No active Service Worker controller (allow worker-src \'self\' and reload twice)';
+    out.textContent = 'No active Service Worker controller (allow worker-src \'self\', register SW, and reload)';
     return;
   }
   out.textContent = `Asking SW to connect WebSocket (${kTestWsUrl})...`;
   navigator.serviceWorker.controller.postMessage({ cmd: 'websocket', url: kTestWsUrl });
 });
 
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.addEventListener('message', (e) => {
-    document.getElementById('ws-out').textContent = e.data;
-  });
-
+document.getElementById('sw-reg-btn').addEventListener('click', () => {
+  if (!('serviceWorker' in navigator)) {
+    document.getElementById('sw-out').textContent = 'Service workers not supported in this browser.';
+    return;
+  }
   navigator.serviceWorker.register('/sw.js')
     .then(reg => {
       document.getElementById('sw-out').textContent = 'Registration successful, scope: ' + reg.scope;
@@ -212,12 +311,16 @@ if ('serviceWorker' in navigator) {
       document.getElementById('sw-out').textContent = 'Registration failed: ' + err;
       console.warn('SW: registration failed', err);
     });
+});
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    document.getElementById('ws-out').textContent = e.data;
+  });
 
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     console.log('SW: Controller changed');
   });
-} else {
-  document.getElementById('sw-out').textContent = 'Service workers not supported in this browser.';
 }
 </script>
 </body>

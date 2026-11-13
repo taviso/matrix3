@@ -31,7 +31,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.send_response(HTTPStatus.OK)
             self.send_header('Content-Type', 'application/javascript')
             self.send_header('Service-Worker-Allowed', '/')
-            self.send_header('Cache-Control', 'no-cache')
             self.send_header('Content-Length', str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -58,10 +57,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header('Content-Security-Policy', csp)
         self.send_header('Content-Type', 'text/html')
-        self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def end_headers(self):
+        self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+        self.send_header('Expires', '0')
+        super().end_headers()
 
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000

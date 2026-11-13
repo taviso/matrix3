@@ -1,9 +1,18 @@
 <!doctype html>
 <html>
 <body style="font-family:sans-serif;margin:8px">
-same-origin frame <span id="out"></span>
+frame <button id="sw" type="button">register sw</button> <span id="out"></span>
 <script>
 document.write('(script working) ');
+document.getElementById('sw').addEventListener('click', () => {
+  if (!navigator.serviceWorker) {
+    document.getElementById('out').textContent = '(no sw in context)';
+    return;
+  }
+  navigator.serviceWorker.register('/sw.js')
+    .then(() => document.getElementById('out').textContent = '(sw registered)')
+    .catch(e => document.getElementById('out').textContent = `(sw blocked: ${e.message})`);
+});
 if (new URLSearchParams(location.search).has('fetch')) {
   fetch('https://api.github.com/')
     .then(() => document.getElementById('out').textContent = '(fetch ok -- CSP bypassed!)')
