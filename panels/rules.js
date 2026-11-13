@@ -59,7 +59,11 @@ function updateRuleTables() {
             chk.type = "checkbox";
             chk.checked = false;
             chk.className = "rule";
-            chk.dataset.id = rule.id;
+            row.rule = rule;
+            Object.defineProperty(row, "checked", {
+                get: () => chk.checked,
+                set: (v) => { chk.checked = v; },
+            });
             row.insertCell(-1).appendChild(chk);
             let hostCell = row.insertCell(-1);
             hostCell.innerText = rule.host;
@@ -82,12 +86,10 @@ function updateRuleTables() {
         }
 
         applyFilter();
-        document.getElementById('remove').disabled = rules.length === 0;
-        document.getElementById('commit').disabled = !rules.some(r => r.isSession);
-        document.getElementById('selectdynamic').disabled = !rules.some(r => !r.isSession);
-        document.getElementById('invertdynamic').disabled = !rules.some(r => !r.isSession);
-        document.getElementById('selectsession').disabled = !rules.some(r => r.isSession);
-        document.getElementById('invertsession').disabled = !rules.some(r => r.isSession);
+        let hasDynamic = rules.some(r => !r.isSession);
+        let hasSession = rules.some(r => r.isSession);
+        document.querySelectorAll('#dynamiccontrols button').forEach(b => b.disabled = !hasDynamic);
+        document.querySelectorAll('#sessioncontrols button').forEach(b => b.disabled = !hasSession);
     });
 }
 
@@ -99,14 +101,14 @@ function selectAll(table) {
     const filterText = document.getElementById('filter').value.toLowerCase();
     getRuleRows(table)
         .filter(r => r.textContent.toLowerCase().includes(filterText))
-        .forEach(r => r.cells[0].firstChild.checked = true);
+        .forEach(r => r.checked = true);
 }
 
 function invertSelection(table) {
     const filterText = document.getElementById('filter').value.toLowerCase();
     getRuleRows(table)
         .filter(r => r.textContent.toLowerCase().includes(filterText))
-        .forEach(r => r.cells[0].firstChild.checked = !r.cells[0].firstChild.checked);
+        .forEach(r => r.checked = !r.checked);
 }
 
 function applyFilter() {
@@ -119,38 +121,41 @@ function applyFilter() {
 
 document.getElementById('filter').addEventListener('input', applyFilter);
 
-document.getElementById('remove').addEventListener("click", async () => {
-    let checked = Array.from(document.querySelectorAll('input.rule:checked:not(:disabled)'));
+async function removeSelected(table) {
+    let checked = getRuleRows(table).filter(r => r.checked);
 
     // Confirm action if multiple rules are checked.
     if (checked.length > 5 && !await utils.confirmAction(`Remove ${checked.length} rules?`)) {
         return;
     }
 
-    let rules = RulesManager.getRules();
-    let ruleFromId = id => rules.find(r => r.id === id);
-
-    for (let chk of checked) {
-        let rule = ruleFromId(parseInt(chk.dataset.id));
-        await RulesManager.delRule(rule);
+    for (let row of checked) {
+        await RulesManager.delRule(row.rule);
     }
 
+    updateRuleTables();
+}
+
+document.getElementById('uncommit').addEventListener("click", async () => {
+    for (let row of getRuleRows(dynamicTbl).filter(r => r.checked)) {
+        await RulesManager.uncommitDynamicRulesForHost(row.rule.host);
+    }
     updateRuleTables();
 });
 
 document.getElementById('commit').addEventListener("click", async () => {
-    // Promote any checked sesion rules.
-    for (let row of sessionTbl.rows) {
-        if (!row.cells[0].firstChild.checked)
-            continue;
-        await RulesManager.commitSessionRulesForHost(row.cells[1].innerText);
+    for (let row of getRuleRows(sessionTbl).filter(r => r.checked)) {
+        await RulesManager.commitSessionRulesForHost(row.rule.host);
     }
     updateRuleTables();
 });
+
 document.getElementById('selectdynamic').addEventListener("click", () => selectAll(dynamicTbl));
 document.getElementById('invertdynamic').addEventListener("click", () => invertSelection(dynamicTbl));
+document.getElementById('removedynamic').addEventListener("click", () => removeSelected(dynamicTbl));
 document.getElementById('selectsession').addEventListener("click", () => selectAll(sessionTbl));
 document.getElementById('invertsession').addEventListener("click", () => invertSelection(sessionTbl));
+document.getElementById('removesession').addEventListener("click", () => removeSelected(sessionTbl));
 
 chrome.runtime.onMessage.addListener((msg) => {
     switch (msg.command) {
