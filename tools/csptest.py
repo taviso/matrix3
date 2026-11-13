@@ -26,6 +26,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.send_header('Location', '/')
             self.end_headers()
             return
+        elif self.path.startswith('/redirect'):
+            query = urllib.parse.urlsplit(self.path).query
+            target = urllib.parse.parse_qs(query).get('to', ['https://cdn.jsdelivr.net/npm/d3/+esm'])[0]
+            self.send_response(HTTPStatus.FOUND)
+            self.send_header('Location', target)
+            self.end_headers()
+            return
         elif self.path == '/sw.js':
             body = Path('sw.js').read_bytes()
             self.send_response(HTTPStatus.OK)

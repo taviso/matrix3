@@ -133,6 +133,7 @@ document.getElementById('worker-chain-btn').addEventListener('click', async () =
   <button id="srcdoc-btn" type="button">Load &lt;iframe sandbox="allow-scripts" srcdoc="..."&gt;</button>
   <button id="many-frames-btn" type="button">Load 10 frames (fake1..10.localhost)</button>
   <button id="long-host-btn" type="button">Load long &amp; deep hostnames</button>
+  <button id="redirect-btn" type="button">Load /redirect -&gt; cross-origin script (302)</button>
 </p>
 <p>
   <select id="scheme-select">
@@ -203,6 +204,16 @@ document.getElementById('long-host-btn').addEventListener('click', () => {
   }));
   fetch('https://supercalifragilisticexpialidocious-extremely-long-subresource-host.example.com/').catch(() => {});
   fetch('https://a.b.c.d.e.f.g.h.i.j.k.l.m.n.o.p.deep-subresource.example.com/').catch(() => {});
+});
+
+document.getElementById('redirect-btn').addEventListener('click', () => {
+  const out = document.getElementById('special-out');
+  out.textContent = 'Loading /redirect -> https://cdn.jsdelivr.net/npm/d3/+esm...';
+  const s = document.createElement('script');
+  s.src = `/redirect?t=${Date.now()}`;
+  s.onload = () => out.textContent = 'redirected script loaded ok';
+  s.onerror = () => out.textContent = 'redirected script blocked by CSP';
+  document.body.appendChild(s);
 });
 
 document.getElementById('weird-schemes-btn').addEventListener('click', () => {

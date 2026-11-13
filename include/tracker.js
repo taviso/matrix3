@@ -12,6 +12,7 @@ class Tab {
     server = {};
     policy = {};
     documents = new Map();
+    redirects = new Map();
 
     // Chrome will suspend our service worker when idle, and we'll lose any
     // data we're tracking in memory. That's not a big problem, just a minor
@@ -110,8 +111,17 @@ export default class ViolationTracker {
         await this.#state;
         let tab = this.#getOrCreateTab(tabId);
         let policy = tab.policy;
-        let blocked = report.blocked?.origin;
+        let blockedUrl = report.blocked;
         let docUrl = URL.parse(report.report["document-uri"]);
+
+        // Per W3C CSP3 §5.3, when a request is blocked after a redirect,
+        // blocked-uri in the report is the pre-redirect URL; follow any
+        // redirects recorded by onBeforeRedirect (up to Fetch's 20-redirect
+        // limit, net::URLRequest::kMaxRedirects) to find the blocked target.
+        for (let i = 0; i < 20 && tab.redirects.has(blockedUrl?.href); i++)
+            blockedUrl = URL.parse(tab.redirects.get(blockedUrl.href));
+
+        let blocked = blockedUrl?.origin;
 
         // Local-scheme contexts (blob: workers, about:srcdoc frames, etc.)
         // report a bare scheme like "blob" or "about" as document-uri, so
@@ -122,7 +132,7 @@ export default class ViolationTracker {
         if (!docUrl?.hostname)
             docUrl = URL.parse(tab.documents.get(report.documentId));
 
-        if (!report.blocked || !docUrl?.hostname)
+        if (!blockedUrl || !docUrl?.hostname)
             return false;
 
         let origin = docUrl.origin;
@@ -131,9 +141,9 @@ export default class ViolationTracker {
         if (blocked == "null") {
             // Opaque origins (inline, eval, data, blob, etc) have origin "null".
             // Map them back to their CSP source keywords using the protocol.
-            blocked = CspReport.protocolSource(report.blocked.protocol);
+            blocked = CspReport.protocolSource(blockedUrl.protocol);
             if (blocked === undefined) {
-                console.warn("tracker", "unknown blocked pseudo-scheme", report.blocked);
+                console.warn("tracker", "unknown blocked pseudo-scheme", blockedUrl);
                 return false;
             }
         } else if (blocked == origin) {
@@ -190,7 +200,18 @@ export default class ViolationTracker {
         let tab = this.#getOrCreateTab(tabId);
         tab.policy = {};
         tab.documents.clear();
+        tab.redirects.clear();
         this.#saveState();
+    }
+
+    async addRedirect(tabId, fromUrl, toUrl) {
+        await this.#state;
+        if (tabId === -1 || !fromUrl || !toUrl)
+            return;
+        let redirects = this.#getOrCreateTab(tabId).redirects;
+        if (redirects.size >= 128)
+            redirects.delete(redirects.keys().next().value);
+        redirects.set(fromUrl, toUrl);
     }
 
     async resetServerPolicy(tabId) {
