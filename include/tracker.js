@@ -198,6 +198,11 @@ export default class ViolationTracker {
     async resetViolations(tabId) {
         await this.#state;
         let tab = this.#getOrCreateTab(tabId);
+        for (let url of tab.documents.values()) {
+            let origin = URL.parse(url)?.origin;
+            if (origin)
+                this.#workers.delete(origin);
+        }
         tab.policy = {};
         tab.documents.clear();
         tab.redirects.clear();

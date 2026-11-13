@@ -326,6 +326,83 @@
       runWorkerCmd('Same-Origin Worker (/worker.js)', '/worker.js', { cmd: 'import', param: kTestModule });
     });
 
+    let activeSharedWorker = null;
+    const swExtendedBox = document.getElementById('shared-worker-extended');
+
+    function connectSharedWorker(extendedLifetime = swExtendedBox.checked, allowFallback = true) {
+      const label = 'Shared Worker (/worker.js)';
+      setStatus('shared-worker', 'pending', 'Connecting...', `Connecting to SharedWorker (/worker.js, extendedLifetime: ${extendedLifetime})...`);
+      try {
+        const sw = new SharedWorker('/worker.js', { extendedLifetime });
+        activeSharedWorker = sw;
+        sw.port.addEventListener('message', (e) => {
+          if (e.data?.type === 'status') {
+            swExtendedBox.checked = extendedLifetime;
+            const { startedAt, connections } = e.data;
+            const reused = connections > 1;
+            setStatus(
+              'shared-worker',
+              reused ? 'pending' : 'allowed',
+              reused ? `Reused Existing (Conn #${connections})` : 'New Instance (Conn #1)',
+              reused
+                ? `Connected to existing SharedWorker started at ${startedAt} (connection #${connections}, extendedLifetime: ${extendedLifetime}) — still enforces policy from ${startedAt}!`
+                : `Started fresh SharedWorker at ${startedAt} (connection #1, extendedLifetime: ${extendedLifetime}).`
+            );
+            return;
+          }
+          const msg = String(e.data);
+          if (msg.startsWith('closing SharedWorker')) {
+            activeSharedWorker = null;
+            setStatus('shared-worker', 'neutral', 'Terminated', msg);
+            setWorkerResult('neutral', 'Terminated', label, msg);
+            return;
+          }
+          const ok = msg.includes(' ok');
+          if (ok) {
+            setWorkerResult('allowed', 'Allowed', label, msg);
+          } else {
+            setWorkerResult('blocked', 'Blocked', label, `${msg} — check 🔧 & connect-src in matrix³ Report.`);
+          }
+        });
+        sw.addEventListener('error', (e) => {
+          if (allowFallback) {
+            connectSharedWorker(!extendedLifetime, false);
+            return;
+          }
+          activeSharedWorker = null;
+          setStatus('shared-worker', 'blocked', 'Blocked', `SharedWorker error: ${e.message || 'blocked by worker-src'}`);
+          setWorkerResult('blocked', 'Blocked', label, `SharedWorker error: ${e.message || 'blocked by worker-src'}`);
+        });
+        sw.port.start();
+      } catch (err) {
+        activeSharedWorker = null;
+        setStatus('shared-worker', 'blocked', 'Blocked', `SharedWorker creation blocked: ${err}`);
+      }
+    }
+
+    document.getElementById('worker-shared-btn').addEventListener('click', () => {
+      connectSharedWorker();
+    });
+
+    document.getElementById('worker-shared-fetch-btn').addEventListener('click', () => {
+      const label = `Shared Worker fetch(${kTestModule})`;
+      if (!activeSharedWorker) {
+          setWorkerResult('blocked', 'Blocked', label, `SharedWorker not connected`);
+      }
+      if (activeSharedWorker) {
+        setWorkerResult('pending', 'Fetching...', label, `Asking SharedWorker to fetch(${kTestModule})...`);
+        activeSharedWorker.port.postMessage({ cmd: 'fetch', param: kTestModule });
+      }
+    });
+
+    document.getElementById('worker-shared-close-btn').addEventListener('click', () => {
+      if (activeSharedWorker) {
+        activeSharedWorker.port.postMessage({ cmd: 'close' });
+      } else {
+        setStatus('shared-worker', 'neutral', 'Not Connected', 'No active SharedWorker connection.');
+      }
+    });
+
     document.getElementById('worker-blob-btn').addEventListener('click', async () => {
       const code = await (await fetch('/worker.js')).text();
       const blob = new Blob([code], { type: 'text/javascript' });
@@ -1132,10 +1209,36 @@
   <section class="panel" aria-labelledby="heading-workers">
     <div class="section-header">
       <h2 id="heading-workers">2. Web Workers &amp; Nested Worker Attribution</h2>
-      <p>Spawns a Dedicated Worker (testing <code>worker-src</code>), then runs dynamic <code>import('https://cdn.jsdelivr.net/npm/d3/+esm')</code> inside the worker (testing <code>script-src</code> &amp; <code>documentId</code> violation attribution).</p>
+      <p>Spawns Dedicated and Shared Workers (testing <code>worker-src</code>), then runs dynamic <code>import()</code> or <code>fetch()</code> inside the worker (testing <code>script-src</code>, <code>connect-src</code>, &amp; persistent <code>SharedWorker</code> policy lifetime).</p>
+    </div>
+
+    <div class="card-grid wide">
+      <article class="card">
+        <header>
+          <h3>Persistent Shared Worker (<code>/worker.js</code>)</h3>
+          <span id="badge-shared-worker" class="badge neutral">Not Connected</span>
+        </header>
+        <div class="meta-row">
+          <code>new SharedWorker('/worker.js')</code>
+          <label><input type="checkbox" id="shared-worker-extended"> <code>extendedLifetime: true</code></label>
+        </div>
+        <footer id="out-shared-worker">Click "Connect Shared Worker" below to start or attach to a SharedWorker instance.</footer>
+      </article>
     </div>
 
     <div class="action-grid">
+      <button id="worker-shared-btn" class="action-btn" type="button">
+        <span class="btn-title">Connect Shared Worker (<code>/worker.js</code>)</span>
+        <span class="btn-sub">Starts or attaches to persistent <code>SharedWorker</code></span>
+      </button>
+      <button id="worker-shared-fetch-btn" class="action-btn" type="button">
+        <span class="btn-title">Shared Worker <code>fetch(jsdelivr)</code></span>
+        <span class="btn-sub">Asks active <code>SharedWorker</code> to fetch <code>cdn.jsdelivr.net</code> (triggers <code>🔧</code>)</span>
+      </button>
+      <button id="worker-shared-close-btn" class="action-btn" type="button">
+        <span class="btn-title">Terminate Shared Worker (<code>self.close()</code>)</span>
+        <span class="btn-sub">Stops the running <code>SharedWorker</code> so next connect gets fresh CSP</span>
+      </button>
       <button id="worker-url-btn" class="action-btn" type="button">
         <span class="btn-title">Same-Origin Worker (<code>/worker.js</code>)</span>
         <span class="btn-sub">Requires <code>worker-src 'self'</code> &rarr; <code>import(jsdelivr)</code></span>

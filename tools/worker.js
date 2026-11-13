@@ -1,11 +1,23 @@
-self.addEventListener('message', async (e) => {
+const startedAt = new Date().toLocaleTimeString();
+let connections = 0;
+
+async function handleMessage(target, e) {
     const { cmd, param } = e.data ?? {};
 
     try {
         switch (cmd) {
             case 'import':
                 await import(param);
-                self.postMessage(`${cmd} ok`);
+                target.postMessage(`${cmd} ok`);
+                break;
+            case 'fetch': {
+                const res = await fetch(param);
+                target.postMessage(`fetch(${param}) ok (HTTP ${res.status}, worker started at ${startedAt}, conn #${connections})`);
+                break;
+            }
+            case 'close':
+                target.postMessage(`closing SharedWorker (started at ${startedAt})`);
+                self.close();
                 break;
             case 'spawn': {
                 let url = param.url;
@@ -17,21 +29,30 @@ self.addEventListener('message', async (e) => {
                 }
                 const child = new Worker(url);
                 child.addEventListener('message', (ev) => {
-                    self.postMessage(`nested -> ${ev.data}`);
+                    target.postMessage(`nested -> ${ev.data}`);
                     if (revoke) URL.revokeObjectURL(url);
                 });
                 child.addEventListener('error', (ev) => {
-                    self.postMessage(`nested worker error: ${ev.message || 'blocked'}`);
+                    target.postMessage(`nested worker error: ${ev.message || 'blocked'}`);
                     if (revoke) URL.revokeObjectURL(url);
                 });
                 child.postMessage(param.message);
                 break;
             }
             default:
-                self.postMessage(`unknown cmd: ${cmd}`);
+                target.postMessage(`unknown cmd: ${cmd}`);
                 break;
         }
     } catch (err) {
-        self.postMessage(`${cmd} blocked: ${err}`);
+        target.postMessage(`${cmd} blocked (worker started at ${startedAt}, conn #${connections}): ${err}`);
     }
+}
+
+self.addEventListener('message', (e) => handleMessage(self, e));
+self.addEventListener('connect', (e) => {
+    connections++;
+    const port = e.ports[0];
+    port.addEventListener('message', (ev) => handleMessage(port, ev));
+    port.start();
+    port.postMessage({ type: 'status', startedAt, connections });
 });

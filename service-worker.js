@@ -146,15 +146,34 @@ chrome.webRequest.onBeforeRequest.addListener(async (details) => {
 //      the response comes from neither a network socket (no details.ip) nor
 //      the browser's HTTP cache (details.fromCache is false).
 chrome.webRequest.onCompleted.addListener(async (details) => {
-        let isFrame = details.type === "main_frame" || details.type === "sub_frame";
-        let origin = details.tabId === -1
-            ? details.initiator
-            : (isFrame && !details.ip && !details.fromCache && details.url);
+        let origin;
 
-        if (origin && await tracker.addServiceWorker(origin)) {
+        if (details.tabId === -1) {
+            // Tabless request from a background worker or SW script update.
+            origin = details.initiator;
+        } else if (details.type === "main_frame" || details.type === "sub_frame") {
+            // Frame response synthesized by Service Worker respondWith()
+            // (neither a network socket nor the browser HTTP cache).
+            if (!details.ip && !details.fromCache)
+                origin = details.url;
+        }
+
+        if (!origin || !await tracker.addServiceWorker(origin))
+            return;
+
+        // Tabless worker requests aren't tied to a single tabId, so notify
+        // any open tabs matching the worker's origin.
+        let tabIds = [];
+        if (details.tabId !== -1) {
+            tabIds.push(details.tabId);
+        } else {
+            tabIds = await tracker.findTabsForOrigin(origin);
+        }
+
+        for (let id of tabIds) {
             chrome.runtime.sendMessage({
                 command: MessageTypes.NOTIFY_UPDATE,
-                   data: { id: details.tabId }
+                   data: { id }
             }).catch(() => {});
         }
     }, {
