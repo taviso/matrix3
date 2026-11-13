@@ -18,14 +18,17 @@ document.querySelectorAll("table.sources").forEach(table => {
     table.append(document.getElementById("sources-template").content.cloneNode(true));
 });
 
+// Find the elements we need in the DOM.
 const directivesTable = document.querySelector("table#sources")
 const sandboxTable = document.querySelector("table#sandbox")
 const serverTable = document.querySelector("table#serversources")
 
 const originList = document.querySelector("div#frames")
 const unregistersw = document.querySelector("button.unregistersw")
-unregistersw.remove();
+const headerList = document.querySelector("textarea#servercsp")
 
+// Add a getter and setter so that we can query the table more easily
+// without complex DOM manipulation.
 Object.defineProperties(originList, {
     value: {
         get() { return this.querySelector('button.active')?.dataset.value ?? ''; },
@@ -34,11 +37,10 @@ Object.defineProperties(originList, {
             this.querySelector(`button[data-value="${v}"]`)?.classList.add('active');
         }
     },
-    protocol: {
-        get() { return this.querySelector('button.active')?.dataset.protocol; }
+    origin: {
+        get() { return this.querySelector('button.active')?.dataset.origin; }
     }
 })
-const headerList = document.querySelector("textarea#servercsp")
 
 let currentServerPolicies = [];
 
@@ -497,9 +499,11 @@ async function populateOriginList(preferredDomain, tab) {
         let u = new URL(f.url);
         if (u.origin == "null")
             continue;
-        let domain = await psl.getScopedDomain(u.hostname);
+        let domain = utils.isProtectedOrigin(u)
+            ? u.hostname
+            : await psl.getScopedDomain(u.hostname);
         if (!domains.has(domain))
-            domains.set(domain, u.protocol);
+            domains.set(domain, u.origin);
         if (f.frameId === 0)
             topDomain = domain;
     }
@@ -512,13 +516,13 @@ async function populateOriginList(preferredDomain, tab) {
 
     originList.replaceChildren();
 
-    for (let [domain, protocol] of domains) {
+    for (let [domain, origin] of domains) {
         let btn = document.createElement("button");
         let span = document.createElement("span");
         let sw = unregistersw.cloneNode(true);
         btn.title = domain;
         btn.dataset.value = domain;
-        btn.dataset.protocol = protocol;
+        btn.dataset.origin = origin;
         span.textContent = domain;
         sw.disabled = !workers.includes(domain);
         btn.append(span, sw);
@@ -608,17 +612,10 @@ async function refreshViolations(domain, tab) {
     return violations;
 }
 
-// Allowlist http(s) only; everything else (chrome:, about:, devtools:, etc.)
-// can't be reached by declarativeNetRequest so the controls would lie.
+// Disable controls on origins that declarativeNetRequest cannot reach
+// (chrome:, about:, devtools:, chromewebstore.google.com, etc.).
 function updateOriginScopeState() {
-    let proto = originList.protocol;
-
-    document.body.classList.remove("inert");
-
-    if (proto !== "http:" && proto !== "https:") {
-        console.debug("report", `unhandled protocol ${proto}, disabling form`);
-        document.body.classList.add("inert");
-    }
+    document.body.classList.toggle("inert", utils.isProtectedOrigin(originList.origin));
 }
 
 // Commit and Abandon only make sense when there's a session rule for the
@@ -740,6 +737,9 @@ chrome.runtime.onMessage.addListener((msg) => {
             break;
     }
 });
+
+// Hide the service worker removal on the default tab by default.
+unregistersw.remove();
 
 Options.addUpdateListener(updateReport);
 updateReport();

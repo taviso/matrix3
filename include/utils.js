@@ -72,6 +72,18 @@ export function formatSource(source) {
     return frag;
 }
 
+const kProtectedHosts = new Set([
+    "chromewebstore.google.com",
+]);
+
+// Origins that declarativeNetRequest and webRequest cannot intercept.
+export function isProtectedOrigin(url) {
+    let u = URL.parse(url);
+    if (!u || (u.protocol !== "http:" && u.protocol !== "https:"))
+        return true;
+    return kProtectedHosts.has(u.hostname);
+}
+
 // Serialize async work under a named Web Lock when available.
 export function callWithLock(name, fn) {
     if (navigator.locks)

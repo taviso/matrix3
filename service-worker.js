@@ -65,7 +65,7 @@ chrome.webRequest.onHeadersReceived.addListener(async (details) => {
             return;
 
         // handle mainframe navigations.
-        if (details.frameId === 0)
+        if (details.type === "main_frame")
             await tracker.resetServerPolicy(details.tabId);
 
         // Track each policy header the server sends (splitting comma-combined
