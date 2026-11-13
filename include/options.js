@@ -45,6 +45,14 @@ export default class Options {
         chrome.storage.onChanged.addListener(Options.#onChanged);
     }
 
+    static isValid(opts) {
+        if (!opts || typeof opts !== "object" || Array.isArray(opts))
+            return false;
+        return Object.entries(kDefaultOptions).every(
+            ([k, v]) => !(k in opts) || typeof opts[k] === typeof v
+        );
+    }
+
     static migrate(opts, groups = Options.#groups ??= { Ignore: {} }) {
         let v = opts.version ?? 1;
         if (v > kDefaultOptions.version) {

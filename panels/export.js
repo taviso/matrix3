@@ -5,7 +5,9 @@ import { MessageTypes } from '/include/commands.js'
 
 const RulesManager = sidepanel.RulesManager;
 const outputElement = document.getElementById("export");
+const fileElement = document.getElementById("file");
 const loadElement = document.getElementById("import");
+const saveElement = document.getElementById("save");
 const downloadElement = document.getElementById("download");
 const pushElement = document.getElementById("push");
 const pullElement = document.getElementById("pull");
@@ -39,7 +41,7 @@ async function buildExport() {
 }
 
 async function refreshExport() {
-    outputElement.value = JSON.stringify(await buildExport(), null, 2);
+    outputElement.value = JSON.stringify(await buildExport());
 }
 
 downloadElement.addEventListener("click", () => {
@@ -78,7 +80,7 @@ pullElement.addEventListener("click", async () => {
     }
 });
 
-loadElement.addEventListener("click", async () => {
+async function saveExport() {
     let blob;
     try {
         blob = JSON.parse(outputElement.value);
@@ -87,35 +89,58 @@ loadElement.addEventListener("click", async () => {
         return;
     }
 
+    if (!Options.isValid(blob?.options)) {
+        alert("Invalid backup format.");
+        return;
+    }
+
     if (!await utils.confirmAction("Replace all current rules with imported ones?"))
         return;
 
-    await RulesManager.replaceAllRules(blob.session ?? [], blob.dynamic ?? []);
+    try {
+        if (blob.session || blob.dynamic)
+            await RulesManager.replaceAllRules(blob.session ?? null, blob.dynamic ?? null);
 
-    if (blob.groups) {
-        for (let [name, group] of Object.entries(blob.groups))
-            groups[name] = Object.assign(groups[name] ?? {}, group);
-        await Options.saveGroups();
-    }
+        if (blob.groups && typeof blob.groups === "object") {
+            for (let [name, group] of Object.entries(blob.groups))
+                groups[name] = Object.assign(groups[name] ?? {}, group);
+            await Options.saveGroups();
+        }
 
-    if (blob.options) {
         if (Options.migrate(blob.options))
             await Options.saveGroups();
         Object.assign(options, blob.options);
         await Options.save();
+
+        // base is always-enabled and skipped by setEnabledRulesets anyway, but
+        // filter it out explicitly so a stray "base" in the blob is benign.
+        if (blob.enabledRulesets)
+            await RulesManager.setEnabledRulesets(
+                blob.enabledRulesets.filter(id => id !== "base")
+            );
+    } catch (e) {
+        alert("Import failed: " + e.message);
+    } finally {
+        // applyOptions re-applies the defaultpolicy ruleset and the advanced class.
+        await sidepanel.applyOptions();
+        await refreshExport();
     }
+}
 
-    // base is always-enabled and skipped by setEnabledRulesets anyway, but
-    // filter it out explicitly so a stray "base" in the blob is benign.
-    if (blob.enabledRulesets)
-        await RulesManager.setEnabledRulesets(
-            blob.enabledRulesets.filter(id => id !== "base")
-        );
-
-    // applyOptions re-applies the defaultpolicy ruleset and the advanced class.
-    await sidepanel.applyOptions();
-    await refreshExport();
+loadElement.addEventListener("click", () => {
+    fileElement.click();
 });
+
+fileElement.addEventListener("change", async () => {
+    const [file] = fileElement.files;
+    if (!file)
+        return;
+    outputElement.value = await file.text();
+    fileElement.value = "";
+    await saveExport();
+});
+
+saveElement.addEventListener("click", saveExport);
 
 chrome.runtime.onMessage.addListener((msg) => {
     if (msg.command === MessageTypes.NOTIFY_RULES)

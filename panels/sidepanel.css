@@ -346,7 +346,7 @@ section.group[data-name="Ignore"] h3::after {
 
 /* Export panel */
 textarea#export {
-    min-height: -webkit-fill-available;
+    word-break: break-all;
 }
 
 /* Hide the divider after the last-push line until it has content */
