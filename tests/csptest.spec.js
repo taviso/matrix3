@@ -626,4 +626,289 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
         await expect(report.locator('input#allow-same-origin')).toBeChecked();
         await expect(report.locator('input#allow-forms')).not.toBeChecked();
     });
+
+    test('Cookies and sandbox interaction: pre-existing cookies, document.cookie, subresource fetch/img, form GET/POST, and allow-same-origin restoration', async ({
+        context,
+        serviceWorker,
+        testbench,
+        openPanel,
+    }) => {
+        await context.clearCookies();
+
+        // 1. Mode 1 (First Party, no sandbox): set JS and HTTP cookies before enabling sandbox
+        await setDefaultPolicy(serviceWorker, 1);
+        await testbench.goto('http://127.0.0.1:8123/reset');
+
+        const preSandbox = await testbench.evaluate(async () => {
+            document.cookie = 'js_pre=1; Path=/';
+            await fetch('/cookie-echo?set=1');
+            const echo = await (await fetch('/cookie-echo')).json();
+            return {
+                origin: window.origin,
+                docCookie: document.cookie,
+                fetchCookie: echo.cookie,
+            };
+        });
+
+        expect(preSandbox.origin).toBe('http://127.0.0.1:8123');
+        expect(preSandbox.docCookie).toContain('js_pre=1');
+        expect(preSandbox.docCookie).toContain('http_default=1');
+        expect(preSandbox.docCookie).toContain('http_lax=1');
+        expect(preSandbox.docCookie).toContain('http_strict=1');
+        expect(preSandbox.docCookie).not.toContain('http_only=1'); // HttpOnly hidden from document.cookie
+        for (const c of ['js_pre=1', 'http_default=1', 'http_lax=1', 'http_strict=1', 'http_only=1']) {
+            expect(preSandbox.fetchCookie).toContain(c);
+        }
+
+        // 2. Switch to Mode 2 (Sandbox + Scripts / sandbox-lite: `sandbox allow-scripts allow-forms`, NO allow-same-origin)
+        await setDefaultPolicy(serviceWorker, 2);
+        await testbench.reload();
+
+        // Pre-existing cookies are NOT deleted from the browser's cookie jar
+        const jarInSandbox = await context.cookies('http://127.0.0.1:8123/');
+        expect(jarInSandbox.map((c) => c.name).sort()).toEqual([
+            'http_default',
+            'http_lax',
+            'http_only',
+            'http_strict',
+            'js_pre',
+        ]);
+
+        // Inspect how sandbox-lite (opaque origin "null") interacts with every cookie mechanism
+        const inSandboxLite = await testbench.evaluate(async () => {
+            let readError = null;
+            let writeError = null;
+            let storageError = null;
+
+            try {
+                void document.cookie;
+            } catch (e) {
+                readError = e.name;
+            }
+            try {
+                document.cookie = 'js_sandbox=1; Path=/';
+            } catch (e) {
+                writeError = e.name;
+            }
+            try {
+                void localStorage.length;
+            } catch (e) {
+                storageError = e.name;
+            }
+
+            // (a) Standard same-path fetch('/cookie-echo') without CORS headers fails outright with TypeError
+            //     because window.origin is "null" (opaque), making same-host fetch() a cross-origin request!
+            let nonCorsFetchFailed = false;
+            try {
+                await fetch('/cookie-echo?record=1');
+            } catch {
+                nonCorsFetchFailed = true;
+            }
+
+            // (b) Even when the server allows Origin: null (?cors=1), default fetch() (credentials: 'same-origin')
+            //     treats /cookie-echo as cross-origin relative to "null" -> no cookies sent, Set-Cookie ignored!
+            const sameOriginFetch = await (
+                await fetch('/cookie-echo?cors=1&set_from_sub=blocked_in_sandbox')
+            ).json();
+
+            // (c) fetch('/cookie-echo?cors=1', { credentials: 'include' }):
+            //     Even with credentials: 'include' + CORS, the sandboxed document's SiteForCookies is opaque,
+            //     so SameSite=Lax (and default) and SameSite=Strict cookies are withheld.
+            const includeFetch = await (
+                await fetch('/cookie-echo?cors=1', { credentials: 'include' })
+            ).json();
+
+            // (d) Declarative subresource (<img src="/cookie-echo?record=1">):
+            //     Also governed by the document's opaque SiteForCookies -> SameSite=Lax/Strict withheld.
+            await new Promise((resolve) => {
+                const img = new Image();
+                img.onload = img.onerror = resolve;
+                img.src = `/cookie-echo?record=1&t=${Date.now()}`;
+            });
+            const afterImg = await (await fetch('/cookie-echo?cors=1')).json();
+
+            return {
+                origin: window.origin,
+                readError,
+                writeError,
+                storageError,
+                nonCorsFetchFailed,
+                lastNavCookie: sameOriginFetch.last_nav_cookie,
+                sameOriginFetchCookie: sameOriginFetch.cookie,
+                includeFetchCookie: includeFetch.cookie,
+                imgSubresourceCookie: afterImg.last_subresource_cookie,
+            };
+        });
+
+        expect(inSandboxLite.origin).toBe('null');
+        // document.cookie (both read and write) and localStorage throw SecurityError in sandbox-lite
+        expect(inSandboxLite.readError).toBe('SecurityError');
+        expect(inSandboxLite.writeError).toBe('SecurityError');
+        expect(inSandboxLite.storageError).toBe('SecurityError');
+        expect(inSandboxLite.nonCorsFetchFailed).toBe(true);
+
+        // Subtle HTTP detail: the initial top-level GET / navigation request itself goes out *before* the
+        // response's `Content-Security-Policy: sandbox` header is applied, so top-level GET / still sent the cookies:
+        for (const c of ['js_pre=1', 'http_default=1', 'http_lax=1', 'http_strict=1', 'http_only=1']) {
+            expect(inSandboxLite.lastNavCookie).toContain(c);
+        }
+
+        // Once the sandboxed document commits (origin "null"), subresource requests (fetch, credentials: 'include', <img>)
+        // cannot send any of the cookies, nor can subresource responses set cookies:
+        expect(inSandboxLite.sameOriginFetchCookie).toBe('');
+        expect(inSandboxLite.includeFetchCookie).toBe('');
+        expect(inSandboxLite.imgSubresourceCookie).toBe('');
+        const jarAfterSubSet = await context.cookies('http://127.0.0.1:8123/');
+        expect(jarAfterSubSet.map((c) => c.name)).not.toContain('sub_cookie');
+
+        // Form submissions (allowed by `allow-forms` in sandbox-lite):
+        // Because the form's initiator origin is opaque ("null"), Chromium treats the navigation as cross-site:
+        // - Top-level <form method="POST"> withholds BOTH SameSite=Strict (`http_strict=1`) and explicit SameSite=Lax (`http_lax=1`)!
+        //   (Cookies without an explicit SameSite attribute fall under Chromium's 2-minute Lax-allowing-unsafe grace window for top-level POST.)
+        await testbench.evaluate(() => {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/cookie-echo';
+            document.body.appendChild(form);
+            form.submit();
+        });
+        await testbench.waitForURL('**/cookie-echo');
+        const formPostResult = JSON.parse(await testbench.locator('body').innerText());
+        expect(formPostResult.method).toBe('POST');
+        expect(formPostResult.cookie).not.toContain('http_strict=1');
+        expect(formPostResult.cookie).not.toContain('http_lax=1');
+
+        // - Top-level <form method="GET"> from the sandboxed document is a cross-site top-level GET navigation,
+        //   so SameSite=Strict (`http_strict=1`) is withheld while SameSite=Lax / default cookies ARE sent!
+        await testbench.goto('http://127.0.0.1:8123/');
+        await testbench.evaluate(() => {
+            const form = document.createElement('form');
+            form.method = 'GET';
+            form.action = '/cookie-echo';
+            document.body.appendChild(form);
+            form.submit();
+        });
+        await testbench.waitForURL('**/cookie-echo*');
+        const formGetResult = JSON.parse(await testbench.locator('body').innerText());
+        expect(formGetResult.method).toBe('GET');
+        expect(formGetResult.cookie).not.toContain('http_strict=1');
+        for (const c of ['js_pre=1', 'http_default=1', 'http_lax=1', 'http_only=1']) {
+            expect(formGetResult.cookie).toContain(c);
+        }
+
+        // 3. Enable `allow-same-origin` in the Report panel and verify ALL pre-existing cookies and cookie APIs work again!
+        await testbench.goto('http://127.0.0.1:8123/');
+        const report = await openPanel('report');
+        await expect(report.locator('input#sandbox-enabled')).toBeChecked();
+        await expect(report.locator('input#allow-scripts')).toBeChecked();
+        await expect(report.locator('input#allow-forms')).toBeChecked();
+        await expect(report.locator('input#allow-same-origin')).not.toBeChecked();
+
+        await report.locator('input#allow-same-origin').check();
+        await waitForPanelIdle(report);
+        await testbench.reload();
+
+        const withSameOrigin = await testbench.evaluate(async () => {
+            const docCookieBeforeWrite = document.cookie;
+            document.cookie = 'js_post=1; Path=/';
+            const fetchEcho = await (await fetch('/cookie-echo?set_from_sub=allowed_now')).json();
+
+            await new Promise((resolve) => {
+                const img = new Image();
+                img.onload = img.onerror = resolve;
+                img.src = `/cookie-echo?record=1&t=${Date.now()}`;
+            });
+            const afterImg = await (await fetch('/cookie-echo')).json();
+
+            // Verify other sandbox restrictions (like blocking window.open without allow-popups) remain active
+            const popupResult = window.open('about:blank');
+
+            return {
+                origin: window.origin,
+                docCookieBeforeWrite,
+                docCookieAfterWrite: document.cookie,
+                fetchCookie: fetchEcho.cookie,
+                afterSubSetCookie: afterImg.cookie,
+                imgSubresourceCookie: afterImg.last_subresource_cookie,
+                popupBlocked: popupResult === null,
+            };
+        });
+
+        expect(withSameOrigin.origin).toBe('http://127.0.0.1:8123');
+        // Pre-existing cookies work immediately in document.cookie without needing to be re-set
+        for (const c of ['js_pre=1', 'http_default=1', 'http_lax=1', 'http_strict=1']) {
+            expect(withSameOrigin.docCookieBeforeWrite).toContain(c);
+        }
+        // Writing new cookies via document.cookie works
+        expect(withSameOrigin.docCookieAfterWrite).toContain('js_post=1');
+        // Same-origin fetch() and <img> subresources send all cookies (including SameSite=Strict and HttpOnly)
+        for (const c of ['js_pre=1', 'js_post=1', 'http_default=1', 'http_lax=1', 'http_strict=1', 'http_only=1']) {
+            expect(withSameOrigin.fetchCookie).toContain(c);
+            expect(withSameOrigin.imgSubresourceCookie).toContain(c);
+        }
+        // Subresource Set-Cookie responses are accepted and stored again
+        expect(withSameOrigin.afterSubSetCookie).toContain('sub_cookie=allowed_now');
+        // Other sandbox restrictions (popups) are still enforced
+        expect(withSameOrigin.popupBlocked).toBe(true);
+
+        // And <form method="POST"> now sends all cookies (including SameSite=Strict) as a same-site request!
+        await testbench.evaluate(() => {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/cookie-echo';
+            document.body.appendChild(form);
+            form.submit();
+        });
+        await testbench.waitForURL('**/cookie-echo');
+        const formPostWithSameOrigin = JSON.parse(await testbench.locator('body').innerText());
+        for (const c of [
+            'js_pre=1',
+            'js_post=1',
+            'http_default=1',
+            'http_lax=1',
+            'http_strict=1',
+            'http_only=1',
+            'sub_cookie=allowed_now',
+        ]) {
+            expect(formPostWithSameOrigin.cookie).toContain(c);
+        }
+
+        // 4. Mode 3 (Sandbox: `sandbox` with no scripts) without vs. with `allow-same-origin`:
+        //    Verify declarative subresources (/dot.png) withhold cookies without allow-same-origin,
+        //    and send all cookies again when allow-same-origin is enabled (even with allow-scripts still off).
+        await testbench.goto('http://127.0.0.1:8123/');
+        await report.locator('button#abandon').click();
+        await waitForPanelIdle(report);
+
+        await setDefaultPolicy(serviceWorker, 3);
+        await testbench.reload();
+
+        const mode3WithoutSameOrigin = await report.evaluate(async () => {
+            return (await fetch('http://127.0.0.1:8123/cookie-echo')).json();
+        });
+        // Top-level GET / sent cookies, but declarative subresource (/dot.png) sent none:
+        expect(mode3WithoutSameOrigin.last_nav_cookie).toContain('http_strict=1');
+        expect(mode3WithoutSameOrigin.last_subresource_cookie).toBe('');
+
+        // Enable ONLY `allow-same-origin` (leaving `allow-scripts` unchecked) and reload:
+        await expect(report.locator('input#sandbox-enabled')).toBeChecked();
+        await expect(report.locator('input#allow-scripts')).not.toBeChecked();
+        await report.locator('input#allow-same-origin').check();
+        await waitForPanelIdle(report);
+        await testbench.reload();
+
+        const mode3WithSameOrigin = await report.evaluate(async () => {
+            return (await fetch('http://127.0.0.1:8123/cookie-echo')).json();
+        });
+        for (const c of ['js_pre=1', 'js_post=1', 'http_default=1', 'http_lax=1', 'http_strict=1', 'http_only=1']) {
+            expect(mode3WithSameOrigin.last_subresource_cookie).toContain(c);
+        }
+        // And scripts are still blocked on the page (#onload-summary remains at its initial static HTML text "23 Probes")
+        await expect(testbench.locator('#onload-summary')).toHaveText('23 Probes');
+
+        // Clean up cookies and session rule
+        await report.locator('button#abandon').click();
+        await waitForPanelIdle(report);
+        await context.clearCookies();
+    });
 });
