@@ -26,7 +26,8 @@ chrome.runtime.onStartup.addListener(applyStoredOptions);
 chrome.runtime.onInstalled.addListener(async (details) => {
     if (details.reason === "update") {
         let rules = new Rules();
-        await rules.replaceAllRules(null, null);
+        await rules.replaceAllRules(null, null)
+            .catch(e => console.error("service", "rule migration failed", e));
     }
     await applyStoredOptions();
 });
