@@ -563,9 +563,7 @@ async function populateServerPolicy(tab) {
                     if (!sidepanel.isValidSource(src)) {
                         // Strip path suffixes from server sources (e.g. "example.com/path/"
                         // or "https://example.com/path"); the server's own CSP still enforces the path.
-                        src = src.includes("://")
-                            ? URL.parse(src)?.origin
-                            : src.split("/", 1).at(0);
+                        src = src.split("/", src.includes("://") ? 3 : 1).join("/");
                     }
                     if (!sidepanel.isValidSource(src)) {
                         console.debug("report", `ignoring invalid or unsupported server source ${src}`);

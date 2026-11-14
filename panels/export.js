@@ -101,9 +101,10 @@ async function saveExport() {
         if (blob.session || blob.dynamic)
             await RulesManager.replaceAllRules(blob.session ?? null, blob.dynamic ?? null);
 
-        if (blob.groups && typeof blob.groups === "object") {
-            for (let [name, group] of Object.entries(blob.groups))
-                groups[name] = Object.assign(groups[name] ?? {}, group);
+        if ((blob.groups && typeof blob.groups === "object") || blob.options?.groups) {
+            for (let key of Object.keys(groups))
+                delete groups[key];
+            Object.assign(groups, { Ignore: {} }, blob.groups);
             await Options.saveGroups();
         }
 

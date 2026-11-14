@@ -136,9 +136,7 @@ export default class Policy {
     toHeader() {
         let headerString = "";
         for (let directive in this.directives) {
-            headerString += directive;
-            headerString += " ";
-            headerString += this.directives[directive].join(" ");
+            headerString += [directive, ...this.directives[directive]].join(" ");
             headerString += "; ";
         }
         return headerString;
