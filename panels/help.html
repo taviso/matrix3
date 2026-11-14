@@ -60,26 +60,6 @@ permissions of the active website. If the page embeds frames from other
 <abbr title="The domain or hostname of a website (e.g. example.com)">origins</abbr>,
 each origin appears as a tab above the table.
 </p>
-<details>
-<summary>Service Workers (🔧)</summary>
-<p>
-<abbr title="A persistent background script installed by a website that can intercept and cache network requests">Service Workers</abbr>
-can sometimes cause confusing results. For example, a worker started
-<i>before</i> a policy change might appear to ignore it. When a background
-worker is active for an origin, a 🔧 icon appears on its tab; click it to
-unregister Service Workers and clear cached responses.
-</p>
-<p>
-<abbr title="A background script shared by multiple tabs or frames">Shared
-Workers</abbr> can also persist in the background in some cases. For example,
-if a site is open in multiple tabs, or if the worker requested
-<code>extendedLifetime</code>. Chrome does not allow extensions to terminate
-Shared Workers, but you can terminate the worker in
-<code>chrome://inspect/#workers</code>. This shouldn't be necessary in most
-cases, as Shared Workers are not usually long lived (even with
-<code>extendedLifetime</code>).
-</p>
-</details>
 <h3>Session and Dynamic Rules</h3>
 <p>
 Toggling a checkbox in the <a href="report.html">Report</a> panel creates a
@@ -104,6 +84,25 @@ Resources and actions blocked by matrix³ are highlighted in orange. Enable the 
 checkboxes, then click <b>Reload</b> to test. When you are happy with the settings,
 you can <b>Commit</b> them to make them permanent.
 </p>
+<details>
+<summary>Service Workers (🔧)</summary>
+<p>
+<abbr title="A persistent background script installed by a website that can intercept and cache network requests">Service Workers</abbr>
+can sometimes cause confusing results. For example, a worker started
+<i>before</i> a policy change might appear to ignore it. When a background
+worker is active for an origin, a 🔧 icon appears on its tab; click it to
+unregister Service Workers and clear cached responses.
+</p>
+<p>
+<abbr title="A background script shared by multiple tabs or frames">Shared
+Workers</abbr> can also persist in the background in some cases. For example,
+if a site is open in multiple tabs, or if the worker requested
+<code>extendedLifetime</code>. Chrome does not allow extensions to terminate
+Shared Workers, but you can terminate the worker in
+<code>chrome://inspect/#workers</code>. This shouldn't be necessary in most
+cases, as Shared Workers are not usually long lived).
+</p>
+</details>
 <h3>Sandbox Directives</h3>
 <p>
 Enabling the sandbox runs the document in an isolated origin and blocks
