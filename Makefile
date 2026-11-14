@@ -1,15 +1,18 @@
 VERSION = $(shell jq -r .version < manifest.json)
-.PHONY: clean version.json
+.PHONY: clean test version.json
 
 all: matrix3_32.png matrix3_64.png matrix3_128.png version.json
 
 dist: matrix3-$(VERSION).zip
 
+test: all
+	playwright test
+
 version.json:
 	@git log -1 --format='{"commit": "%h", "date": "%cs"}' > $@
 
 %.zip: all
-	git ls-files --exclude-standard | zip $@ -@ -x "tools/*" ".gitignore" "*/.gitignore" "Makefile" "*/Makefile" "cws/*"
+	git ls-files --exclude-standard | zip $@ -@ -x "tools/*" "tests/*" "cws/*" "*Makefile" "*.gitignore" "playwright.config.js"
 	zip $@ version.json
 
 %_32.png: %.svg

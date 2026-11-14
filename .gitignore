@@ -4,6 +4,8 @@
 *.crx
 version.json
 _metadata/
+test-results/
+playwright-report/
 *.md
 !README.md
 !tools/dot.png
