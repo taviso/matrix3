@@ -18,9 +18,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     current_csp = ''
 
     def do_GET(self):
-        if self.path == '/':
-            return self._render(Handler.current_csp)
-        elif self.path == '/reset':
+        parsed = urllib.parse.urlsplit(self.path)
+        if parsed.path == '/':
+            qs = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+            csp = '\n'.join(qs['csp']) if 'csp' in qs else Handler.current_csp
+            return self._render(csp)
+        elif parsed.path == '/reset':
             Handler.current_csp = ''
             self.send_response(HTTPStatus.SEE_OTHER)
             self.send_header('Location', '/')
@@ -62,7 +65,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def _render(self, csp):
         body = Path('index.html').read_text().replace('{{csp}}', html.escape(csp)).encode('utf-8')
         self.send_response(HTTPStatus.OK)
-        self.send_header('Content-Security-Policy', csp)
+        lines = [line.strip() for line in csp.split('\n') if line.strip()]
+        for line in (lines or ['']):
+            self.send_header('Content-Security-Policy', line.encode('utf-8').decode('latin-1'))
         self.send_header('Content-Type', 'text/html')
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()

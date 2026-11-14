@@ -1,152 +1,414 @@
-import { test, expect } from './fixtures.js';
+import {
+    test,
+    expect,
+    setDefaultPolicy,
+    waitForPanelIdle,
+    getOnloadBadges,
+    getReportedViolations,
+    getSourceCheckbox,
+} from './fixtures.js';
 
-const kPolicyRulesets = ['permissive', 'firstparty', 'sandbox-lite', 'sandbox', 'strict'];
-
-// Helper to set the default policy level (0 = permissive, 1 = firstparty,
-// 2 = sandbox-lite, 3 = sandbox, 4 = strict) and wait for dNR rulesets to update.
-async function setDefaultPolicy(serviceWorker, level) {
-    const enable = kPolicyRulesets[level];
-    const disable = kPolicyRulesets.filter((r) => r !== enable);
-    await serviceWorker.evaluate(async ({ level, enable, disable }) => {
-        const { options = {} } = await chrome.storage.sync.get('options');
-        options.version ??= 3;
-        options.defaultpolicy = level;
-        await chrome.storage.sync.set({ options });
-        await chrome.declarativeNetRequest.updateEnabledRulesets({
-            enableRulesetIds: [enable],
-            disableRulesetIds: disable,
-        });
-    }, { level, enable, disable });
-}
-
-test.describe('matrix³ CSP Testbench', () => {
-    test('permissive mode (level 0) allows all page-load probes', async ({ serviceWorker, testbench }) => {
+test.describe('Default Policy Modes (0..4) & Page-Load Probes', () => {
+    test('mode 0 (permissive): allows all 21 page-load probes with zero violations', async ({ serviceWorker, testbench, openPanel }) => {
         await setDefaultPolicy(serviceWorker, 0);
         await testbench.reload();
 
-        await expect(testbench.locator('#badge-inline-auth')).toHaveText('Allowed');
-        await expect(testbench.locator('#badge-eval')).toHaveText('Allowed');
-        await expect(testbench.locator('#badge-wasm')).toHaveText('Allowed');
-        await expect(testbench.locator('#badge-ext-script')).toHaveText('Allowed');
-        await expect(testbench.locator('#badge-fetch-self')).toHaveText('Allowed');
-        await expect(testbench.locator('#badge-fetch')).toHaveText('Allowed');
-        await expect(testbench.locator('#badge-frame-self')).toHaveText('Allowed');
-        await expect(testbench.locator('#badge-frame-cross')).toHaveText('Allowed');
-    });
-
-    test('firstparty mode (level 1) blocks cross-origin script/fetch/frame and allows passive/self', async ({ serviceWorker, testbench, openPanel }) => {
-        await setDefaultPolicy(serviceWorker, 1);
-        await testbench.reload();
-
-        // First-party and passive resources should be allowed
-        await expect(testbench.locator('#badge-inline-auth')).toHaveText('Allowed');
-        await expect(testbench.locator('#badge-eval')).toHaveText('Allowed');
-        await expect(testbench.locator('#badge-img-self')).toHaveText('Allowed');
-        await expect(testbench.locator('#badge-img-cross')).toHaveText('Allowed');
-        await expect(testbench.locator('#badge-fetch-self')).toHaveText('Allowed');
-        await expect(testbench.locator('#badge-frame-self')).toHaveText('Allowed');
-
-        // Active cross-origin resources and workers should be blocked
-        await expect(testbench.locator('#badge-ext-script')).toHaveText('Blocked');
-        await expect(testbench.locator('#badge-fetch')).toHaveText('Blocked');
-        await expect(testbench.locator('#badge-frame-cross')).toHaveText('Blocked');
-
-        // Open the Report panel and verify the blocked origins show up as violations
-        // (bucketed by registrable domain in default Domain scope: *.github.com)
-        const report = await openPanel('report');
-        const githubRow = report.locator('table#sources tbody tr', { hasText: '*.github.com' });
-        await expect(githubRow).toBeVisible();
-
-        const connectCheckbox = githubRow.locator('input.rule.violation');
-        await expect(connectCheckbox).toBeVisible();
-        await expect(connectCheckbox).not.toBeChecked();
-
-        // Check the box to allow https://*.github.com in connect-src (creates a session rule)
-        await connectCheckbox.check();
-        await expect(report.locator('button#commit')).toBeEnabled();
-
-        // Reload the testbench and verify cross-origin fetch is now Allowed!
-        await testbench.reload();
-        await expect(testbench.locator('#badge-fetch')).toHaveText('Allowed');
-    });
-
-    test('resolves 302 redirect blocked-uri to target origin instead of self', async ({ serviceWorker, testbench, openPanel }) => {
-        await setDefaultPolicy(serviceWorker, 1);
-        await testbench.reload();
-
-        // Click the 302 redirect test button (/redirect -> https://cdn.jsdelivr.net/npm/d3/+esm)
-        await testbench.locator('#redirect-btn').click();
-        await expect(testbench.locator('#badge-special')).toHaveText('Blocked');
+        const badges = await getOnloadBadges(testbench);
+        expect(badges).toEqual({
+            'inline-auth': 'Allowed',
+            'inline-plain': 'Allowed',
+            'eval': 'Allowed',
+            'wasm': 'Allowed',
+            'ext-script': 'Allowed',
+            'inline-style': 'Allowed',
+            'ext-style': 'Allowed',
+            'img-self': 'Allowed',
+            'img-cross': 'Allowed',
+            'img-data': 'Allowed',
+            'font-self': 'Allowed',
+            'font-cross': 'Allowed',
+            'font-data': 'Allowed',
+            'media-self': 'Allowed',
+            'media-cross': 'Allowed',
+            'media-data': 'Allowed',
+            'fetch-self': 'Allowed',
+            'fetch': 'Allowed',
+            'frame-self': 'Allowed',
+            'frame-cross': 'Allowed',
+            'object-self': 'Allowed',
+        });
 
         const report = await openPanel('report');
-        const jsdelivrRow = report.locator('table#sources tbody tr', { hasText: '*.jsdelivr.net' });
-        await expect(jsdelivrRow).toBeVisible();
-        await expect(jsdelivrRow.locator('input.rule.violation')).toBeVisible();
+        const violations = await getReportedViolations(report);
+        expect(violations).toEqual({});
     });
 
-    test('attributes opaque-origin sandboxed srcdoc violations via documentId fallback', async ({ serviceWorker, testbench, openPanel }) => {
+    test('mode 1 (firstparty): allows first-party/passive probes, blocks cross-origin active probes, and reports exact violations', async ({ serviceWorker, testbench, openPanel }) => {
         await setDefaultPolicy(serviceWorker, 1);
         await testbench.reload();
 
-        // Spawn <iframe sandbox="allow-scripts" srcdoc="..."> fetching https://untrusted.example.com/
+        const badges = await getOnloadBadges(testbench);
+        expect(badges).toEqual({
+            'inline-auth': 'Allowed',
+            'inline-plain': 'Allowed',
+            'eval': 'Allowed',
+            'wasm': 'Allowed',
+            'ext-script': 'Blocked',
+            'inline-style': 'Allowed',
+            'ext-style': 'Allowed',
+            'img-self': 'Allowed',
+            'img-cross': 'Allowed',
+            'img-data': 'Allowed',
+            'font-self': 'Allowed',
+            'font-cross': 'Allowed',
+            'font-data': 'Allowed',
+            'media-self': 'Allowed',
+            'media-cross': 'Blocked',
+            'media-data': 'Blocked',
+            'fetch-self': 'Allowed',
+            'fetch': 'Blocked',
+            'frame-self': 'Allowed',
+            'frame-cross': 'Blocked',
+            'object-self': 'Allowed',
+        });
+
+        const report = await openPanel('report');
+        await expect.poll(() => getReportedViolations(report)).toEqual({
+            'data:': ['media-src'],
+            'https://*.github.com': ['connect-src'],
+            'https://*.google.com': ['script-src', 'media-src'],
+            'https://example.com': ['frame-src', 'manifest-src'],
+        });
+    });
+
+    test('mode 2 (sandbox-lite): enforces opaque origin with allow-scripts and allow-forms', async ({ serviceWorker, testbench, openPanel }) => {
+        await setDefaultPolicy(serviceWorker, 2);
+        await testbench.reload();
+
+        // Document runs in a unique opaque origin ("null") with scripts allowed
+        expect(await testbench.evaluate(() => window.origin)).toBe('null');
+        await expect(testbench.locator('#badge-inline-auth')).toHaveText('Allowed');
+        await expect(testbench.locator('#badge-inline-plain')).toHaveText('Allowed');
+        await expect(testbench.locator('#badge-eval')).toHaveText('Allowed');
+        await expect(testbench.locator('#badge-inline-style')).toHaveText('Allowed');
+        await expect(testbench.locator('#badge-img-data')).toHaveText('Allowed');
+
+        const report = await openPanel('report');
+        await expect(report.locator('input#sandbox-enabled')).toBeChecked();
+        await expect(report.locator('input#allow-scripts')).toBeChecked();
+        await expect(report.locator('input#allow-forms')).toBeChecked();
+        await expect(report.locator('input#allow-same-origin')).not.toBeChecked();
+    });
+
+    test('mode 3 (sandbox): blocks all script execution via bare sandbox directive', async ({ serviceWorker, testbench, openPanel }) => {
+        await setDefaultPolicy(serviceWorker, 3);
+        await testbench.reload();
+
+        // Scripts do not execute at all under bare sandbox, so initial HTML badges remain "Blocked"
+        await expect(testbench.locator('#badge-inline-auth')).toHaveText('Blocked');
+        await expect(testbench.locator('#badge-inline-plain')).toHaveText('Blocked');
+        await expect(testbench.locator('#badge-eval')).toHaveText('Blocked');
+        await expect(testbench.locator('#badge-wasm')).toHaveText('Blocked');
+
+        const report = await openPanel('report');
+        await expect(report.locator('input#sandbox-enabled')).toBeChecked();
+        await expect(report.locator('input#allow-scripts')).not.toBeChecked();
+        await expect(report.locator('input#allow-forms')).not.toBeChecked();
+    });
+
+    test('mode 4 (strict): blocks scripts, frames, objects, and third-party assets while allowing self/data images', async ({ serviceWorker, testbench, openPanel }) => {
+        await setDefaultPolicy(serviceWorker, 4);
+        await testbench.reload();
+
+        // Even inline scripts are blocked in strict mode (default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:)
+        await expect(testbench.locator('#badge-inline-auth')).toHaveText('Blocked');
+        await expect(testbench.locator('#badge-inline-plain')).toHaveText('Blocked');
+        await expect(testbench.locator('#badge-eval')).toHaveText('Blocked');
+
+        // Verify passive image enforcement directly via naturalWidth
+        const imgStates = await testbench.evaluate(() => ({
+            self: document.querySelector('img[data-probe="img-self"]')?.naturalWidth > 0,
+            data: document.querySelector('img[data-probe="img-data"]')?.naturalWidth > 0,
+            cross: document.querySelector('img[data-probe="img-cross"]')?.naturalWidth > 0,
+        }));
+        expect(imgStates).toEqual({ self: true, data: true, cross: false });
+
+        const report = await openPanel('report');
+        await expect.poll(() => getReportedViolations(report)).toEqual({
+            "'self'": ['frame-src', 'media-src', 'manifest-src', 'object-src'],
+            "'unsafe-inline'": ['script-src'],
+            'data:': ['media-src'],
+            'https://*.google.com': ['script-src', 'img-src', 'media-src'],
+            'https://*.googleapis.com': ['style-src'],
+            'https://example.com': ['frame-src'],
+        });
+    });
+});
+
+test.describe('Report Panel: Allowing, Denying, Mutex, & Sandbox Controls', () => {
+    test('checking violation checkboxes allows all blocked probes on reload', async ({ serviceWorker, testbench, openPanel }) => {
+        await setDefaultPolicy(serviceWorker, 1);
+        await testbench.reload();
+
+        const report = await openPanel('report');
+        await expect(report.locator('table#sources input.violation')).toHaveCount(6);
+
+        // Check every reported violation checkbox in #sources (plus 'self' in frame-src
+        // and manifest-src because adding an explicit directive overrides default-src 'self' fallback)
+        await getSourceCheckbox(report, 'https://*.google.com', 'script-src').check();
+        await getSourceCheckbox(report, 'https://*.google.com', 'media-src').check();
+        await getSourceCheckbox(report, 'data:', 'media-src').check();
+        await getSourceCheckbox(report, 'https://*.github.com', 'connect-src').check();
+        await getSourceCheckbox(report, "'self'", 'frame-src').check();
+        await getSourceCheckbox(report, 'https://example.com', 'frame-src').check();
+        await getSourceCheckbox(report, "'self'", 'manifest-src').check();
+        await getSourceCheckbox(report, 'https://example.com', 'manifest-src').check();
+
+        // Use the Report panel's Reload button to reload the active testbench tab
+        await Promise.all([
+            testbench.waitForNavigation(),
+            report.locator('button#reload').click(),
+        ]);
+
+        const badges = await getOnloadBadges(testbench);
+        for (const [probe, status] of Object.entries(badges)) {
+            expect(status, `probe ${probe} should be Allowed`).toBe('Allowed');
+        }
+    });
+
+    test('unchecking allowed sources or checking \'none\' denies previously allowed probes and enforces \'none\' mutex', async ({ serviceWorker, testbench, openPanel }) => {
+        await setDefaultPolicy(serviceWorker, 1);
+        await testbench.reload();
+
+        const report = await openPanel('report');
+
+        // Verify 'none'-leader mutex: checking 'none' in img-src clears 'self', data:, blob:, https:
+        const imgNone = getSourceCheckbox(report, "'none'", 'img-src');
+        const imgSelf = getSourceCheckbox(report, "'self'", 'img-src');
+        const imgHttps = getSourceCheckbox(report, 'https:', 'img-src');
+
+        await expect(await imgSelf.locator()).toBeChecked();
+        await expect(await imgHttps.locator()).toBeChecked();
+
+        await imgNone.check();
+        await expect(await imgNone.locator()).toBeChecked();
+        await expect(await imgSelf.locator()).not.toBeChecked();
+        await expect(await imgHttps.locator()).not.toBeChecked();
+
+        // Checking 'self' in img-src automatically unchecks 'none'
+        await imgSelf.check();
+        await expect(await imgNone.locator()).not.toBeChecked();
+        await expect(await imgSelf.locator()).toBeChecked();
+
+        // Also deny eval(), inline styles, cross-origin fonts, and same-origin fetch
+        await getSourceCheckbox(report, "'unsafe-eval'", 'script-src').uncheck();
+        await getSourceCheckbox(report, "'unsafe-inline'", 'style-src').uncheck();
+        await getSourceCheckbox(report, 'https:', 'font-src').uncheck();
+        await getSourceCheckbox(report, "'none'", 'connect-src').check();
+
+        await testbench.reload();
+
+        const badges = await getOnloadBadges(testbench);
+        expect(badges['eval']).toBe('Blocked');
+        expect(badges['inline-style']).toBe('Blocked');
+        expect(badges['img-self']).toBe('Allowed');
+        expect(badges['img-cross']).toBe('Blocked');
+        expect(badges['img-data']).toBe('Blocked');
+        expect(badges['font-cross']).toBe('Blocked');
+        expect(badges['fetch-self']).toBe('Blocked');
+    });
+
+    test('toggling sandbox in Report panel enforces sandbox flags and seeds first-party fallback when disabled', async ({ serviceWorker, testbench, openPanel }) => {
+        await setDefaultPolicy(serviceWorker, 3); // bare sandbox (default-src is empty)
+        await testbench.reload();
+
+        const report = await openPanel('report');
+        await expect(report.locator('input#sandbox-enabled')).toBeChecked();
+
+        // Unchecking #sandbox-enabled when default-src is empty triggers fallbackToFirstParty()
+        await report.locator('input#sandbox-enabled').uncheck();
+        await expect(await getSourceCheckbox(report, "'self'", 'default-src').locator()).toBeChecked();
+        await expect(await getSourceCheckbox(report, "'unsafe-inline'", 'script-src').locator()).toBeChecked();
+
+        // Re-enable sandbox with allow-scripts only
+        await report.locator('input#sandbox-enabled').check();
+        await waitForPanelIdle(report);
+        await report.locator('input#allow-scripts').check();
+        await waitForPanelIdle(report);
+        await testbench.reload();
+
+        expect(await testbench.evaluate(() => window.origin)).toBe('null');
+        await expect(testbench.locator('#badge-inline-auth')).toHaveText('Allowed');
+
+        // Reset button clears the host's rules
+        await report.locator('button#reset').click();
+        await expect(report.locator('button#reset')).toBeDisabled();
+    });
+});
+
+test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Service Worker', () => {
+    test('Dedicated Workers (URL, blob:, data:, 3-hop chain) and SharedWorker blocking & unblocking', async ({ serviceWorker, testbench, openPanel }) => {
+        await setDefaultPolicy(serviceWorker, 1);
+        await testbench.reload();
+
+        // Under firstparty (worker-src 'none'), all worker types are blocked
+        await testbench.locator('#worker-url-btn').click();
+        await expect(testbench.locator('#badge-worker')).toHaveText('Blocked');
+
+        await testbench.locator('#worker-blob-btn').click();
+        await expect(testbench.locator('#badge-worker')).toHaveText('Blocked');
+
+        await testbench.locator('#worker-data-btn').click();
+        await expect(testbench.locator('#badge-worker')).toHaveText('Blocked');
+
+        await testbench.locator('#worker-shared-btn').click();
+        await expect(testbench.locator('#badge-shared-worker')).toHaveText('Blocked');
+
+        // Verify worker-src violations ('self', blob:, data:) appear in Report panel
+        const report = await openPanel('report');
+        await expect(await getSourceCheckbox(report, "'self'", 'worker-src').locator()).toHaveClass(/violation/);
+        await expect(await getSourceCheckbox(report, 'blob:', 'worker-src').locator()).toHaveClass(/violation/);
+        await expect(await getSourceCheckbox(report, 'data:', 'worker-src').locator()).toHaveClass(/violation/);
+
+        // Allow 'self', blob:, data: in worker-src, plus 'self', blob:, data: and *.jsdelivr.net in script-src & connect-src
+        await getSourceCheckbox(report, "'self'", 'worker-src').check();
+        await getSourceCheckbox(report, 'blob:', 'worker-src').check();
+        await getSourceCheckbox(report, 'data:', 'worker-src').check();
+        await getSourceCheckbox(report, 'blob:', 'script-src').check();
+        await getSourceCheckbox(report, 'data:', 'script-src').check();
+
+        // Trigger one worker import so *.jsdelivr.net appears or add it via reload
+        await testbench.reload();
+        await testbench.locator('#worker-url-btn').click();
+        await expect(testbench.locator('#badge-worker')).toHaveText('Blocked');
+
+        // Now *.jsdelivr.net violation is reported under script-src; allow it in script-src & connect-src
+        await getSourceCheckbox(report, 'https://*.jsdelivr.net', 'script-src').check();
+        await getSourceCheckbox(report, 'https://*.jsdelivr.net', 'connect-src').check();
+        await testbench.reload();
+
+        // Verify all 4 Dedicated Worker modes succeed!
+        await testbench.locator('#worker-url-btn').click();
+        await expect(testbench.locator('#badge-worker')).toHaveText('Allowed');
+
+        await testbench.locator('#worker-blob-btn').click();
+        await expect(testbench.locator('#badge-worker')).toHaveText('Allowed');
+
+        await testbench.locator('#worker-data-btn').click();
+        await expect(testbench.locator('#badge-worker')).toHaveText('Allowed');
+
+        await testbench.locator('#worker-chain-btn').click();
+        await expect(testbench.locator('#badge-worker')).toHaveText('Allowed');
+
+        // Verify SharedWorker connect, fetch(jsdelivr), and close all succeed!
+        await testbench.locator('#worker-shared-btn').click();
+        await expect(testbench.locator('#badge-shared-worker')).toContainText('Conn #1');
+
+        await testbench.locator('#worker-shared-fetch-btn').click();
+        await expect(testbench.locator('#badge-worker')).toHaveText('Allowed');
+
+        await testbench.locator('#worker-shared-close-btn').click();
+        await expect(testbench.locator('#badge-shared-worker')).toHaveText('Terminated');
+    });
+
+    test('<object> navigation CSP injection, 302 redirect resolution, srcdoc attribution, and special schemes', async ({ serviceWorker, testbench, openPanel }) => {
+        await setDefaultPolicy(serviceWorker, 1);
+        await testbench.reload();
+
+        // 1. <object data="/frame.html?fetch=1"> loads under object-src 'self', and inner fetch is governed by connect-src
+        await testbench.locator('#object-btn').click();
+        await expect(testbench.locator('#badge-special')).toHaveText('Object Loaded');
+
+        // 2. Sandboxed srcdoc iframe attributes opaque-origin fetch(https://untrusted.example.com/) via documentId
         await testbench.locator('#srcdoc-btn').click();
         await expect(testbench.locator('#badge-special')).toHaveText('Fetch Blocked (Check Report)');
 
+        // 3. 302 Redirect (/redirect -> https://cdn.jsdelivr.net/npm/d3/+esm) resolves post-redirect target
+        await testbench.locator('#redirect-btn').click();
+        await expect(testbench.locator('#badge-special')).toHaveText('Blocked');
+
+        // 4. Special schemes: frame:data (empty blocked-uri "" -> data:), frame:blob (blob:), ws:wss (wss://*.websocket.org), and #long-host-btn
+        await testbench.locator('#scheme-select').selectOption('frame:data');
+        await testbench.locator('#weird-schemes-btn').click();
+
+        await testbench.locator('#scheme-select').selectOption('frame:blob');
+        await testbench.locator('#weird-schemes-btn').click();
+
+        await testbench.locator('#long-host-btn').click();
+        await expect(testbench.locator('#badge-special')).toHaveText('Dispatched');
+
+        await testbench.locator('#ws-page-btn').click();
+        await expect(testbench.locator('#badge-ws')).toContainText('Blocked');
+
         const report = await openPanel('report');
-        const exampleRow = report.locator('table#sources tbody tr', { hasText: '*.example.com' });
-        await expect(exampleRow).toBeVisible();
-        await expect(exampleRow.locator('input.rule.violation')).toBeVisible();
+        await expect(await getSourceCheckbox(report, 'https://*.example.com', 'connect-src').locator()).toHaveClass(/violation/);
+        await expect(await getSourceCheckbox(report, 'https://*.jsdelivr.net', 'script-src').locator()).toHaveClass(/violation/);
+        await expect(await getSourceCheckbox(report, 'data:', 'frame-src').locator()).toHaveClass(/violation/);
+        await expect(await getSourceCheckbox(report, 'blob:', 'frame-src').locator()).toHaveClass(/violation/);
+        await expect(await getSourceCheckbox(report, 'wss://*.websocket.org', 'connect-src').locator()).toHaveClass(/violation/);
+
+        // Allow https://*.jsdelivr.net in script-src and verify /redirect script succeeds on reload
+        await getSourceCheckbox(report, 'https://*.jsdelivr.net', 'script-src').check();
+        await testbench.reload();
+        await testbench.locator('#redirect-btn').click();
+        await expect(testbench.locator('#badge-special')).toHaveText('Allowed');
     });
 
-    test('rule lifecycle: session -> commit (dynamic) -> uncommit -> abandon, and tab disable/resume', async ({ serviceWorker, testbench, openPanel }) => {
+    test('Service Worker registration, detection, tabless violation attribution, and 🔧 unregistration', async ({ serviceWorker, testbench, openPanel }) => {
         await setDefaultPolicy(serviceWorker, 1);
         await testbench.reload();
 
+        // Blocked when worker-src is 'none'
+        await testbench.locator('#sw-reg-btn').click();
+        await expect(testbench.locator('#badge-sw')).toHaveText('Blocked');
+
+        // Allow worker-src 'self' and reload
         const report = await openPanel('report');
-        const githubRow = report.locator('table#sources tbody tr', { hasText: '*.github.com' });
-        const connectBox = githubRow.locator('input.rule.violation');
-        await expect(connectBox).toBeVisible();
-
-        // 1. Toggle checkbox -> creates a session rule
-        await connectBox.check();
-        await expect(report.locator('button#commit')).toBeEnabled();
-        await expect(report.locator('button#abandon')).toBeEnabled();
-
-        // 2. Commit -> promotes session rule to dynamic rule
-        await report.locator('button#commit').click();
-        await expect(report.locator('button#uncommit')).toBeEnabled();
-        await expect(report.locator('button#abandon')).toBeDisabled();
-
-        // 3. Uncommit -> demotes dynamic rule back to session rule
-        await report.locator('button#uncommit').click();
-        await expect(report.locator('button#commit')).toBeEnabled();
-        await expect(report.locator('button#abandon')).toBeEnabled();
-
-        // 4. Abandon -> discards session rule
-        await report.locator('button#abandon').click();
-        await expect(report.locator('button#commit')).toBeDisabled();
-        await expect(report.locator('button#reset')).toBeDisabled();
-
-        // 5. Disable -> exempts the active tab from all CSP rules
-        await report.locator('button#disable').click();
-        await expect(report.locator('button#resume')).toBeEnabled();
+        await getSourceCheckbox(report, "'self'", 'worker-src').check();
         await testbench.reload();
-        await expect(testbench.locator('#badge-fetch')).toHaveText('Allowed');
 
-        // 6. Resume -> removes tab exemption
-        await report.locator('button#resume').click();
-        await expect(report.locator('button#resume')).toBeDisabled();
+        // Register /sw.js and reload so it controls the page
+        await testbench.locator('#sw-reg-btn').click();
+        await expect(testbench.locator('#badge-sw')).toHaveText(/^(Registered|Controlling Page)$/);
         await testbench.reload();
-        await expect(testbench.locator('#badge-fetch')).toHaveText('Blocked');
+        await expect(testbench.locator('#badge-sw')).toHaveText('Controlling Page');
+
+        // Tabless WebSocket violation inside Service Worker (tabId === -1) is attributed to the tab
+        await testbench.locator('#ws-sw-btn').click();
+        await expect(testbench.locator('#badge-ws')).toContainText('Blocked');
+        await expect(await getSourceCheckbox(report, 'wss://*.websocket.org', 'connect-src').locator()).toHaveClass(/violation/);
+
+        // The 🔧 (button.unregistersw) button on the 127.0.0.1 origin tab should now be enabled
+        const swBtn = report.locator('div#frames button[data-value="127.0.0.1"] button.unregistersw');
+        await expect(swBtn).toBeEnabled();
+
+        // Clicking 🔧 unregisters the Service Worker and disables the button
+        await swBtn.click();
+        await expect(swBtn).toBeDisabled();
+
+        await testbench.reload();
+        await expect(testbench.locator('#badge-sw')).toHaveText('Not Registered');
     });
 
-    test('captures Server Content-Security-Policy and imports nonces/paths on Accept', async ({ serviceWorker, testbench, openPanel }) => {
+    test('Testbench Policy Builder and Server Suggested Policy (#accept, #merge, dirty state, passthrough)', async ({ serviceWorker, testbench, openPanel }) => {
         await setDefaultPolicy(serviceWorker, 1);
+        await testbench.reload();
 
-        // Apply a Server CSP with a nonce, a path-suffixed origin, and report-uri (which should be stripped)
-        await testbench.locator('textarea#csp').fill(
-            "script-src 'nonce-test-nonce' https://cdn.jsdelivr.net/npm/d3/; style-src 'self' 'unsafe-inline'; report-uri /report"
-        );
+        // Use the Testbench Policy Builder UI to construct a server CSP
+        await testbench.locator('#builder-directive').selectOption('script-src');
+        await testbench.locator('#builder-source').selectOption("'nonce-test-nonce'");
+        await testbench.locator('#builder-append-btn').click();
+
+        await testbench.locator('#builder-source').selectOption('__other__');
+        await testbench.locator('#builder-custom').fill('https://cdn.jsdelivr.net/npm/d3/');
+        await testbench.locator('#builder-append-btn').click();
+
+        await testbench.locator('#builder-directive').selectOption('upgrade-insecure-requests');
+        await testbench.locator('#builder-append-btn').click();
+
+        await testbench.locator('#builder-directive').selectOption('report-uri');
+        await testbench.locator('#builder-append-btn').click();
+
         await testbench.locator('form.csp-form button[type="submit"]').click();
 
         const report = await openPanel('report');
@@ -154,16 +416,214 @@ test.describe('matrix³ CSP Testbench', () => {
         await expect(details).toBeVisible();
         await details.locator('summary').click();
 
-        // Verify path-suffixed source was normalized to origin in #serversources
-        const serverJsdelivrRow = report.locator('table#serversources tbody tr', { hasText: 'cdn.jsdelivr.net' });
-        await expect(serverJsdelivrRow).toBeVisible();
+        // Passthrough textarea shows upgrade-insecure-requests but strips report-uri
+        await expect(report.locator('textarea#servercsp')).toHaveText('upgrade-insecure-requests;');
 
-        // Click Accept to import the server policy into matrix³'s session rules
+        // Path suffix on https://cdn.jsdelivr.net/npm/d3/ was stripped to https://cdn.jsdelivr.net
+        await expect(await getSourceCheckbox(report, 'https://cdn.jsdelivr.net', 'script-src', 'table#serversources').locator()).toBeChecked();
+
+        // Merge adds server sources to existing First-Party selections (keeping style-src https:)
+        await report.locator('button#merge').click();
+        await expect(await getSourceCheckbox(report, 'https://cdn.jsdelivr.net', 'script-src').locator()).toBeChecked();
+        await expect(await getSourceCheckbox(report, 'https:', 'style-src').locator()).toBeChecked();
+
+        // Accept replaces selections with only the server policy (translating nonce -> 'unsafe-inline' + 'self')
         await report.locator('button#accept').click();
-        await expect(report.locator('button#commit')).toBeEnabled();
+        await expect(await getSourceCheckbox(report, "'unsafe-inline'", 'script-src').locator()).toBeChecked();
+        await expect(await getSourceCheckbox(report, "'self'", 'script-src').locator()).toBeChecked();
+        await expect(await getSourceCheckbox(report, 'https://cdn.jsdelivr.net', 'script-src').locator()).toBeChecked();
+        await expect(await getSourceCheckbox(report, 'https:', 'style-src').locator()).not.toBeChecked();
+    });
 
-        // Verify 'nonce-test-nonce' was translated to 'unsafe-inline' + 'self' in #sources
-        const mainJsdelivrRow = report.locator('table#sources tbody tr', { hasText: 'cdn.jsdelivr.net' });
-        await expect(mainJsdelivrRow).toBeVisible();
+    test('Additive CSP (operation: "append"): intersection with multiple & comma-combined server headers and nonce preservation', async ({
+        serviceWorker,
+        testbench,
+        openPanel,
+    }) => {
+        // 1. Server tightens matrix³ (Permissive mode 0 + 3 server CSP headers including a comma-combined header):
+        //    - Header 1 allows script-src 'self' 'nonce-test-nonce' https://example.com
+        //    - Header 2 (comma-combined) sets style-src 'self' 'unsafe-inline', img-src 'self' data:
+        //    - Header 3 restricts script-src 'self' 'nonce-test-nonce'; connect-src 'none'; form-action 'self'; report-uri /report
+        await setDefaultPolicy(serviceWorker, 0);
+        const multiHeaderCsp = [
+            "script-src 'self' 'nonce-test-nonce' https://example.com",
+            "style-src 'self' 'unsafe-inline', img-src 'self' data:",
+            "script-src 'self' 'nonce-test-nonce'; connect-src 'none'; form-action 'self'; report-uri /report",
+        ].join('\n');
+
+        await testbench.locator('#csp').fill(multiHeaderCsp);
+        await testbench.locator('form.csp-form button[type="submit"]').click();
+
+        const badges = await getOnloadBadges(testbench);
+        // Allowed by intersection of all 3 server headers + matrix³ permissive:
+        expect(badges['inline-auth']).toBe('Allowed'); // matches 'nonce-test-nonce'
+        expect(badges['inline-style']).toBe('Allowed');
+        expect(badges['img-self']).toBe('Allowed');
+        expect(badges['img-data']).toBe('Allowed');
+
+        // Blocked by intersection (Header 3 blocks ext-script, inline-plain, eval, wasm, fetch-self, fetch; Header 2 blocks ext-style, img-cross):
+        expect(badges['inline-plain']).toBe('Blocked'); // lacks nonce="test-nonce"
+        expect(badges['ext-script']).toBe('Blocked'); // allowed in Header 1 & matrix³, blocked by Header 3
+        expect(badges['eval']).toBe('Blocked');
+        expect(badges['wasm']).toBe('Blocked');
+        expect(badges['ext-style']).toBe('Blocked');
+        expect(badges['img-cross']).toBe('Blocked');
+        expect(badges['fetch-self']).toBe('Blocked');
+        expect(badges['fetch']).toBe('Blocked');
+
+        const report = await openPanel('report');
+        // Server-only CSP violations (reported to /report) are filtered by kReportUrls and must not pollute matrix³'s violation table
+        expect(await getReportedViolations(report)).toEqual({});
+
+        // Verify all 4 parsed server policies (from 3 headers, one comma-combined) populate #serversources and #servercsp
+        const details = report.locator('div#serverpolicy details');
+        await expect(details).toBeVisible();
+        await details.locator('summary').click();
+
+        await expect(report.locator('textarea#servercsp')).toHaveText("form-action 'self';");
+        await expect(await getSourceCheckbox(report, "'self'", 'script-src', 'table#serversources').locator()).toBeChecked();
+        await expect(await getSourceCheckbox(report, "'nonce-test-nonce'", 'script-src', 'table#serversources').locator()).toBeChecked();
+        await expect(await getSourceCheckbox(report, 'https://example.com', 'script-src', 'table#serversources').locator()).toBeChecked();
+        await expect(await getSourceCheckbox(report, "'self'", 'style-src', 'table#serversources').locator()).toBeChecked();
+        await expect(await getSourceCheckbox(report, 'data:', 'img-src', 'table#serversources').locator()).toBeChecked();
+        await expect(await getSourceCheckbox(report, "'none'", 'connect-src', 'table#serversources').locator()).toBeChecked();
+
+        // 2. Under Strict mode (4), clicking Accept (#accept) overrides strict.json via the host (allow, append) rule pair,
+        //    translating 'nonce-test-nonce' -> 'unsafe-inline' + 'self' in matrix³'s appended header while the server's
+        //    header still enforces 'nonce-test-nonce' (allowing inline-auth while blocking inline-plain).
+        await setDefaultPolicy(serviceWorker, 4);
+        await report.locator('button#accept').click();
+        await waitForPanelIdle(report);
+        await testbench.reload();
+
+        const badgesAfterAccept = await getOnloadBadges(testbench);
+        expect(badgesAfterAccept['inline-auth']).toBe('Allowed');
+        expect(badgesAfterAccept['inline-plain']).toBe('Blocked');
+        expect(badgesAfterAccept['ext-script']).toBe('Blocked');
+        expect(badgesAfterAccept['inline-style']).toBe('Allowed');
+        expect(badgesAfterAccept['img-self']).toBe('Allowed');
+        expect(badgesAfterAccept['img-data']).toBe('Allowed');
+    });
+
+    test('Malformed, duplicate, valueless, path-suffixed, and unusual Server CSP headers are handled safely', async ({
+        serviceWorker,
+        testbench,
+        openPanel,
+    }) => {
+        await setDefaultPolicy(serviceWorker, 1);
+
+        // Construct an unusual/malformed multi-header + comma-separated server CSP:
+        // - Empty/whitespace segments and stray semicolons/commas
+        // - Duplicate directive in same policy: font-src 'self'; font-src https://evil.example.com (second must be ignored per W3C CSP3)
+        // - Valueless fetch directive: object-src; (equivalent to object-src 'none')
+        // - Sub-directives: script-src-elem https://cdn.jsdelivr.net/npm/d3/+esm; style-src-attr 'unsafe-hashes'
+        // - Path-suffixed host with port, wildcard subdomain, and wildcard port: connect-src https://api.example.com:8443/v1/users?active=1 https://*.example.com/assets/ https://ws.example.com:*/socket sub.example.com/dir/
+        // - Nonsense schemes, malformed ports, invalid wildcards, credentials, relative paths, and weird Unicode/RTL/homograph codepoints
+        // - Prototype-keys as unknown directives: __proto__ foo; constructor bar; toString baz
+        // - Sandbox directive from server: sandbox allow-scripts allow-same-origin
+        const rejectedSources = [
+            // Nonsense / disallowed schemes
+            'javascript://foo.com/%0aalert(1)',
+            'data://foo.com/bar',
+            'ftp://files.example.com/pub',
+            'custom+scheme://foo.com/bar',
+            'http:///empty-host.com/bar',
+            '://missing-scheme.com/bar',
+            // Malformed ports (named parameter syntax, empty, alphanumeric, double colon)
+            'http://foo.com:wtf',
+            'http://foo.com:wtf/bar',
+            'https://foo.com:/bar',
+            'https://foo.com:80a/bar',
+            'https://foo.com:*80/bar',
+            'https://foo.com:80:80/bar',
+            'foo.com:wtf/bar',
+            // Invalid wildcard placements & relative path tricks
+            'https://*.*.example.com/path',
+            'https://**.example.com/path',
+            'https://sub.*.example.com/path',
+            'https://*example.com/path',
+            '*.*.example.com/path',
+            '/relative.example.com/bar',
+            '//schemeless.example.com/bar',
+            // Credentials, query/hash without slash, IPv6 literal, bogus keywords
+            'https://user:pass@example.com/path',
+            'https://example.com?query=1',
+            'https://example.com#hash',
+            'http://[::1]/path',
+            "'bogus-kw'",
+            "'SELF'",
+            '???',
+            // RTL overrides (U+202E), zero-width space (U+200B), Cyrillic homograph (U+0430), C1/DEL control chars (U+0085, U+007F)
+            'https://\u202eexample.com/path',
+            'https://ex\u202eample.com',
+            '\u202esub.example.com/path',
+            'https://exam\u200bple.com/path',
+            'https://\u0430pple.com/path',
+            'https://example.com\u0085/path',
+            'https://ex\u007fample.com/path',
+        ];
+        const weirdCsp = [
+            " , ;;; font-src 'self'; font-src https://evil.example.com; object-src; ;;; ",
+            "script-src 'self' 'nonce-test-nonce'; script-src-elem https://cdn.jsdelivr.net/npm/d3/+esm; style-src-attr 'unsafe-hashes'",
+            `connect-src https://api.example.com:8443/v1/users?active=1 https://*.example.com/assets/ https://ws.example.com:*/socket sub.example.com/dir/; media-src 'self' ${rejectedSources.join(' ')}`,
+            "__proto__ foo; constructor bar; toString baz; sandbox allow-scripts allow-same-origin; report-to endpoint-1",
+        ].join('\n');
+
+        await testbench.locator('#csp').fill(weirdCsp);
+        await testbench.locator('form.csp-form button[type="submit"]').click();
+
+        const report = await openPanel('report');
+        const details = report.locator('div#serverpolicy details');
+        await expect(details).toBeVisible();
+        await details.locator('summary').click();
+
+        // 1. First font-src ('self') is honored; duplicate font-src (https://evil.example.com) is ignored
+        await expect(await getSourceCheckbox(report, "'self'", 'font-src', 'table#serversources').locator()).toBeChecked();
+        await expect(report.locator('table#serversources tbody tr th[title="https://evil.example.com"]')).toHaveCount(0);
+
+        // 2. Valueless object-src; is treated as 'none' (and reveals advanced column)
+        await expect(await getSourceCheckbox(report, "'none'", 'object-src', 'table#serversources').locator()).toBeChecked();
+
+        // 3. Sub-directives collapse into script-src and style-src, and path suffixes are stripped
+        await expect(await getSourceCheckbox(report, 'https://cdn.jsdelivr.net', 'script-src', 'table#serversources').locator()).toBeChecked();
+        await expect(await getSourceCheckbox(report, "'unsafe-hashes'", 'style-src', 'table#serversources').locator()).toBeChecked();
+        await expect(await getSourceCheckbox(report, 'https://api.example.com:8443', 'connect-src', 'table#serversources').locator()).toBeChecked();
+        await expect(await getSourceCheckbox(report, 'https://*.example.com', 'connect-src', 'table#serversources').locator()).toBeChecked();
+        await expect(await getSourceCheckbox(report, 'https://ws.example.com:*', 'connect-src', 'table#serversources').locator()).toBeChecked();
+        await expect(await getSourceCheckbox(report, 'sub.example.com', 'connect-src', 'table#serversources').locator()).toBeChecked();
+
+        // 4. Valid media-src 'self' survives alongside all hostile/malformed/RTL/homograph tokens,
+        //    and the entire #serversources table contains ONLY the expected valid source rows.
+        await expect(await getSourceCheckbox(report, "'self'", 'media-src', 'table#serversources').locator()).toBeChecked();
+        const serverRowTitles = await report
+            .locator('table#serversources tbody tr th')
+            .evaluateAll((ths) => ths.map((th) => th.title));
+        expect(serverRowTitles).toEqual([
+            "'none'",
+            "'self'",
+            "'unsafe-hashes'",
+            'https://*.example.com',
+            'https://api.example.com:8443',
+            'https://cdn.jsdelivr.net',
+            'https://ws.example.com:*',
+            'sub.example.com',
+            "'nonce-test-nonce'",
+        ]);
+
+        // 5. Object.prototype keys (__proto__, constructor, toString) do not throw or pollute Object.prototype,
+        //    and report-to is stripped from passthrough
+        const serverCspText = await report.locator('textarea#servercsp').textContent();
+        expect(serverCspText).toContain('__proto__ foo;');
+        expect(serverCspText).toContain('constructor bar;');
+        expect(serverCspText).toContain('tostring baz;');
+        expect(serverCspText).not.toContain('report-to');
+
+        // 6. Clicking #accept applies the server's sandbox flags (allow-scripts, allow-same-origin) into table#sandbox
+        await report.locator('button#accept').click();
+        await waitForPanelIdle(report);
+        await expect(report.locator('input#sandbox-enabled')).toBeChecked();
+        await expect(report.locator('input#allow-scripts')).toBeChecked();
+        await expect(report.locator('input#allow-same-origin')).toBeChecked();
+        await expect(report.locator('input#allow-forms')).not.toBeChecked();
     });
 });
