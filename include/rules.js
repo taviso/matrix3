@@ -734,9 +734,19 @@ export default class Rules {
         this.#deleteRule(rule);
     }
 
-    // Rule for matching host, preferring session over dynamic.
+    // Rule for matching host (or its closest ancestor domain, since ||host^
+    // rules match subdomains), preferring session over dynamic at each level.
     getHostRule(hostName) {
-        return this.#findSessionForHost(hostName) ?? this.#findDynamicForHost(hostName);
+        let labels = hostName ? hostName.split(".") : [];
+
+        while (labels.length) {
+            let host = labels.join(".");
+            let rule = this.#findSessionForHost(host) ?? this.#findDynamicForHost(host);
+            if (rule)
+                return rule;
+            labels.shift();
+        }
+        return null;
     }
 
     getRules() {
