@@ -1,7 +1,7 @@
 
 # matrix³
 
-This is matrix³, an experimental content policy manager inspired by
+This is matrix<sup>3</sup>, an experimental content policy manager inspired by
 [umatrix](https://github.com/gorhill/uMatrix), but built on `declarativeNetRequest`.
 
 It looks like this -- it adds a sidepanel that lets you enable or disable web
@@ -30,7 +30,7 @@ For the latest development version, follow these steps:
 
 ## Usage
 
-Open the sidepanel via the matrix³ toolbar icon. If this is your first time
+Open the sidepanel via the matrix<sup>3</sup> toolbar icon. If this is your first time
 using the extension, choose a default policy in the **Options** panel.
 
 If a site doesn't work, click the toolbar icon and open the **Report** panel.
