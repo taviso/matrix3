@@ -14,7 +14,7 @@ familiarity with the CSP3 specification is a bonus, but built-in **Help**
 includes examples for common tasks.
 
 There is more information available in the
-[wiki](https://github.com/taviso/matrix3/wiki) and [FAQ](https://github.com/taviso/matrix3/wiki/Frequently-Asked-Questions).
+[wiki](https://github.com/taviso/matrix3/wiki/Getting-Started) and [FAQ](https://github.com/taviso/matrix3/wiki/Frequently-Asked-Questions).
 
 ## Installation
 
