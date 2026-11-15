@@ -354,6 +354,123 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
         await expect(testbench.locator('#badge-special')).toHaveText('Allowed');
     });
 
+    test('caps per-tab domains at 128, per-directive blocked sources at 1024, folds overflow into scheme, and rejects fakeprotocol:// spam', async ({
+        serviceWorker,
+        testbench,
+        openPanel,
+    }) => {
+        await setDefaultPolicy(serviceWorker, 1);
+        await testbench.reload();
+
+        // 1. Trigger fakeprotocol:// violations (which have origin "null" in WHATWG URL) and a real
+        //    https:// violation in the browser, verifying fakeprotocol:// is rejected end-to-end.
+        await testbench.evaluate(() => {
+            for (let i = 0; i < 10; i++) {
+                const img = new Image();
+                img.src = `fakeprotocol${i}://evil.example/x.png`;
+            }
+            fetch('https://real-violation.invalid/').catch(() => {});
+        });
+
+        const panel = await openPanel('options');
+        await expect
+            .poll(
+                async () => {
+                    return await panel.evaluate(async () => {
+                        const [tab] = await chrome.tabs.query({ active: true });
+                        const policy = await chrome.runtime.sendMessage({
+                            command: 'reqpolicy',
+                            data: { id: tab.id, domain: '127.0.0.1' },
+                        });
+                        const connectSrc = policy?.['connect-src'] ?? [];
+                        const imgSrc = policy?.['img-src'] ?? [];
+                        return {
+                            hasRealViolation: connectSrc.includes('https://real-violation.invalid'),
+                            hasFakeProtocol: [...connectSrc, ...imgSrc].some((s) => s.startsWith('fakeprotocol')),
+                        };
+                    });
+                },
+                { timeout: 10000 }
+            )
+            .toEqual({
+                hasRealViolation: true,
+                hasFakeProtocol: false,
+            });
+
+        // 2. Verify kMaxSources (1024) + scheme folding and kMaxDomains (128) on ViolationTracker.
+        const trackerCaps = await panel.evaluate(async () => {
+            const { default: ViolationTracker } = await import('/include/tracker.js');
+            const vt = new ViolationTracker();
+            await vt.resetViolations(9999);
+            await vt.resetServerPolicy(9999);
+
+            // 1,100 distinct blocked https:// origins on frame0.com: first 1,024 are stored
+            // individually, 1,025th folds into "https:", and subsequent ones are deduplicated.
+            await vt.addDocument(9999, 'doc-0', 'https://frame0.com/');
+            for (let i = 0; i < 1100; i++) {
+                await vt.addTabViolation(9999, {
+                    report: { 'document-uri': 'https://frame0.com/' },
+                    directive: 'connect-src',
+                    blocked: new URL(`https://s${i}.invalid/`),
+                    documentId: 'doc-0',
+                });
+            }
+            // Non-special schemes after reaching kMaxSources are still rejected.
+            const fakeAdded = await vt.addTabViolation(9999, {
+                report: { 'document-uri': 'https://frame0.com/' },
+                directive: 'connect-src',
+                blocked: new URL('fakeprotocol://evil.example/'),
+                documentId: 'doc-0',
+            });
+
+            // 140 distinct frame domains: first 128 are tracked in policy and server, overflow is dropped,
+            // while existing domains within the first 128 still accept new violations.
+            for (let i = 0; i < 140; i++) {
+                const docId = `doc-${i}`;
+                const url = `https://frame${i}.com/`;
+                await vt.addDocument(9999, docId, url);
+                await vt.addServerPolicy(9999, url, "default-src 'self'");
+                await vt.addTabViolation(9999, {
+                    report: { 'document-uri': url },
+                    directive: 'img-src',
+                    blocked: new URL('https://cdn.example.net/a.png'),
+                    documentId: docId,
+                });
+            }
+            const addedToFirst = await vt.addTabViolation(9999, {
+                report: { 'document-uri': 'https://frame0.com/' },
+                directive: 'img-src',
+                blocked: new URL('https://other.org/b.png'),
+                documentId: 'doc-0',
+            });
+            const firstDirs = await vt.getDirectives(9999, 'frame0.com');
+            const lastAllowedDirs = await vt.getDirectives(9999, 'frame127.com');
+            const overflowDirs = await vt.getDirectives(9999, 'frame128.com');
+            const overflowServer = await vt.getServerPolicy(9999, 'frame128.com');
+            await vt.resetTab(9999);
+            return {
+                connectCount: firstDirs['connect-src']?.length ?? 0,
+                hasHttpsScheme: firstDirs['connect-src']?.includes('https:') ?? false,
+                fakeAdded,
+                addedToFirst,
+                firstImgCount: firstDirs['img-src']?.length ?? 0,
+                lastAllowedCount: lastAllowedDirs['img-src']?.length ?? 0,
+                overflowCount: Object.keys(overflowDirs).length,
+                overflowServerCount: overflowServer.length,
+            };
+        });
+        expect(trackerCaps).toEqual({
+            connectCount: 1025,
+            hasHttpsScheme: true,
+            fakeAdded: false,
+            addedToFirst: true,
+            firstImgCount: 2,
+            lastAllowedCount: 1,
+            overflowCount: 0,
+            overflowServerCount: 0,
+        });
+    });
+
     test('Service Worker registration, detection, tabless violation attribution, and 🔧 unregistration', async ({ serviceWorker, testbench, openPanel }) => {
         await setDefaultPolicy(serviceWorker, 1);
         await testbench.reload();
@@ -377,6 +494,35 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
         await testbench.locator('#ws-sw-btn').click();
         await expect(testbench.locator('#badge-ws')).toContainText('Blocked');
         await expect(await getSourceCheckbox(report, 'wss://*.websocket.org', 'connect-src').locator()).toHaveClass(/violation/);
+
+        // Verify page JS cannot spoof a CSP violation report via new WebSocket(), fetch(), or sendBeacon()
+        // to either internal report-uri endpoint (wss://_matrix3.internal/csp-report or chrome-extension://.../csp-report).
+        const warReportUrl = await serviceWorker.evaluate(() => chrome.runtime.getURL('csp-report'));
+        await testbench.evaluate(async (warUrl) => {
+            const fakeBody = JSON.stringify({
+                'csp-report': {
+                    'document-uri': location.href,
+                    'effective-directive': 'script-src-elem',
+                    'blocked-uri': 'https://spoofed.example.net/evil.js',
+                },
+            });
+            try {
+                const ws = new WebSocket('wss://_matrix3.internal/csp-report');
+                await new Promise((r) => {
+                    ws.onerror = ws.onclose = r;
+                });
+            } catch {}
+            try {
+                await fetch('wss://_matrix3.internal/csp-report', { method: 'POST', body: fakeBody });
+            } catch {}
+            try {
+                await fetch(warUrl, { method: 'POST', body: fakeBody });
+            } catch {}
+            try {
+                navigator.sendBeacon(warUrl, fakeBody);
+            } catch {}
+        }, warReportUrl);
+        await expect(report.locator('table#sources tbody tr th[title*="spoofed"]')).toHaveCount(0);
 
         // The 🔧 (button.unregistersw) button on the 127.0.0.1 origin tab should now be enabled
         const swBtn = report.locator('div#frames button[data-value="127.0.0.1"] button.unregistersw');
