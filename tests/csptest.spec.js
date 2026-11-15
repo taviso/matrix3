@@ -448,6 +448,24 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
             const overflowDirs = await vt.getDirectives(9999, 'frame128.com');
             const overflowServer = await vt.getServerPolicy(9999, 'frame128.com');
             await vt.resetTab(9999);
+
+            // 3. Verify Object.prototype property names ("__proto__", "constructor", "toString")
+            //    as hostnames do not pollute Object.prototype or throw in addServerPolicy/addTabViolation.
+            for (const protoHost of ['__proto__', 'constructor', 'toString']) {
+                const url = `http://${protoHost}/`;
+                await vt.addDocument(9998, `doc-${protoHost}`, url);
+                await vt.addServerPolicy(9998, url, "default-src 'self'");
+                await vt.addTabViolation(9998, {
+                    report: { 'document-uri': url },
+                    directive: 'img-src',
+                    blocked: new URL('https://cdn.example.net/a.png'),
+                    documentId: `doc-${protoHost}`,
+                });
+            }
+            const protoDirs = await vt.getDirectives(9998, '__proto__');
+            const ctorServer = await vt.getServerPolicy(9998, 'constructor');
+            const pollutedProto = 'img-src' in Object.prototype || 'img-src' in Object;
+            await vt.resetTab(9998);
             return {
                 connectCount: firstDirs['connect-src']?.length ?? 0,
                 hasHttpsScheme: firstDirs['connect-src']?.includes('https:') ?? false,
@@ -457,6 +475,9 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
                 lastAllowedCount: lastAllowedDirs['img-src']?.length ?? 0,
                 overflowCount: Object.keys(overflowDirs).length,
                 overflowServerCount: overflowServer.length,
+                protoImgSrc: protoDirs['img-src'] ?? [],
+                ctorServer,
+                pollutedProto,
             };
         });
         expect(trackerCaps).toEqual({
@@ -468,6 +489,9 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
             lastAllowedCount: 1,
             overflowCount: 0,
             overflowServerCount: 0,
+            protoImgSrc: ['https://*.example.net'],
+            ctorServer: ["default-src 'self'"],
+            pollutedProto: false,
         });
     });
 

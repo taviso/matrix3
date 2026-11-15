@@ -11,8 +11,8 @@ const kMaxSources = 1024;
 
 // Tab violation and policy tracking.
 class Tab {
-    server = {};
-    policy = {};
+    server = Object.create(null);
+    policy = Object.create(null);
     documents = new Map();
     redirects = new Map();
 
@@ -28,7 +28,7 @@ class Tab {
         for (let [k, v] of Object.entries(data.server ?? {}))
             this.server[k] = new Set(v);
         for (let [domain, dirs] of Object.entries(data.policy ?? {})) {
-            this.policy[domain] = {};
+            this.policy[domain] = Object.create(null);
             for (let [dir, srcs] of Object.entries(dirs))
                 this.policy[domain][dir] = new Set(srcs);
         }
@@ -178,7 +178,7 @@ export default class ViolationTracker {
             console.debug("tracker", "domain cap reached, dropping violation", tabId, domain);
             return false;
         }
-        policy[domain] ??= {};
+        policy[domain] ??= Object.create(null);
         let sources = policy[domain][report.directive] ??= new Set();
         // Cap unique origins per directive and fold any overflow into the scheme.
         if (sources.size >= kMaxSources && blocked.includes("://")) {
@@ -217,7 +217,7 @@ export default class ViolationTracker {
             if (origin)
                 this.#workers.delete(origin);
         }
-        tab.policy = {};
+        tab.policy = Object.create(null);
         tab.documents.clear();
         tab.redirects.clear();
         this.#saveState();
@@ -236,7 +236,7 @@ export default class ViolationTracker {
     async resetServerPolicy(tabId) {
         await this.#state;
         let tab = this.#getOrCreateTab(tabId);
-        tab.server = {};
+        tab.server = Object.create(null);
         this.#saveState();
     }
 
