@@ -552,6 +552,19 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
         const swBtn = report.locator('div#frames button[data-value="127.0.0.1"] button.unregistersw');
         await expect(swBtn).toBeEnabled();
 
+        // Opening a second tab to the same origin and closing it must not remove the
+        // tracked Service Worker while the first tab is still open.
+        const secondTab = await testbench.context().newPage();
+        await secondTab.goto(testbench.url());
+        await expect(secondTab.locator('#badge-sw')).toHaveText('Controlling Page');
+        await secondTab.close();
+        await testbench.bringToFront();
+        const workersAfterClose = await report.evaluate(() =>
+            chrome.runtime.sendMessage({ command: 'reqworkers' })
+        );
+        expect(workersAfterClose).toContain('127.0.0.1');
+        await expect(swBtn).toBeEnabled();
+
         // Clicking 🔧 unregisters the Service Worker and disables the button
         await swBtn.click();
         await expect(swBtn).toBeDisabled();
