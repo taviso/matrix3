@@ -174,13 +174,17 @@ export default class ViolationTracker {
             return false;
 
         // Cap tracked frame domains per tab so iframe spam cannot grow unbounded.
-        if (!policy[domain] && Object.keys(policy).length >= kMaxDomains)
+        if (!policy[domain] && Object.keys(policy).length >= kMaxDomains) {
+            console.debug("tracker", "domain cap reached, dropping violation", tabId, domain);
             return false;
+        }
         policy[domain] ??= {};
         let sources = policy[domain][report.directive] ??= new Set();
         // Cap unique origins per directive and fold any overflow into the scheme.
-        if (sources.size >= kMaxSources && blocked.includes("://"))
+        if (sources.size >= kMaxSources && blocked.includes("://")) {
+            console.debug("tracker", "source cap reached", tabId, domain, report.directive, blocked);
             blocked = blockedUrl.protocol;
+        }
         if (sources.has(blocked))
             return false;
         sources.add(blocked);
@@ -243,6 +247,11 @@ export default class ViolationTracker {
         await this.#state;
         let docs = this.#getOrCreateTab(tabId).documents;
 
+        if (docs.size >= kMaxSources) {
+            console.debug("tracker", "document cap reached, dropping document", tabId, documentId, url);
+            return;
+        }
+
         // Local-scheme subframes (about:srcdoc, about:blank, data:) have no
         // hostname of their own, so inherit the parent document's URL.
         if (!URL.parse(url)?.hostname && docs.has(parentDocumentId))
@@ -282,10 +291,21 @@ export default class ViolationTracker {
         let domain = await psl.getScopedDomain(new URL(url).hostname);
         if (this.#tabs.get(tabId) !== tab || tab.server !== server)
             return;
+
         // Cap tracked frame domains per tab so iframe spam cannot grow unbounded.
-        if (!server[domain] && Object.keys(server).length >= kMaxDomains)
+        if (!server[domain] && Object.keys(server).length >= kMaxDomains) {
+            console.debug("tracker", "domain cap reached, dropping server policy", tabId, domain);
             return;
+        }
+
         server[domain] ??= new Set();
+
+        // Cap recorded server headers per domain in case subframes reload with unique nonces.
+        if (server[domain].size >= kMaxDomains) {
+            console.debug("tracker", "header cap reached, dropping server policy", tabId, domain);
+            return;
+        }
+
         server[domain].add(header);
         this.#saveState();
     }
