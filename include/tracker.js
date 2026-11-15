@@ -6,6 +6,8 @@ import * as psl from '/include/psl.js'
 // Track sub-resource violations and surface them in the report panel, so
 // the user can grant per-host permissions without navigating to each blocked
 // origin and editing them one at a time.
+const kMaxDomains = 128;
+const kMaxSources = 1024;
 
 // Tab violation and policy tracking.
 class Tab {
@@ -171,9 +173,17 @@ export default class ViolationTracker {
         if (this.#tabs.get(tabId) !== tab || tab.policy !== policy)
             return false;
 
+        // Cap tracked frame domains per tab so iframe spam cannot grow unbounded.
+        if (!policy[domain] && Object.keys(policy).length >= kMaxDomains)
+            return false;
         policy[domain] ??= {};
-        policy[domain][report.directive] ??= new Set();
-        policy[domain][report.directive].add(blocked);
+        let sources = policy[domain][report.directive] ??= new Set();
+        // Cap unique origins per directive and fold any overflow into the scheme.
+        if (sources.size >= kMaxSources && blocked.includes("://"))
+            blocked = blockedUrl.protocol;
+        if (sources.has(blocked))
+            return false;
+        sources.add(blocked);
         this.#saveState();
 
         // Caller uses our return value to decide whether to badge and notify;
@@ -271,6 +281,9 @@ export default class ViolationTracker {
         let server = tab.server;
         let domain = await psl.getScopedDomain(new URL(url).hostname);
         if (this.#tabs.get(tabId) !== tab || tab.server !== server)
+            return;
+        // Cap tracked frame domains per tab so iframe spam cannot grow unbounded.
+        if (!server[domain] && Object.keys(server).length >= kMaxDomains)
             return;
         server[domain] ??= new Set();
         server[domain].add(header);
