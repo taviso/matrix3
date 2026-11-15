@@ -20,6 +20,8 @@ There is more information available in the
 
 Install the latest stable version via the [Chrome Web Store](https://chromewebstore.google.com/detail/matrix%C2%B3/hpdmcogknijiaifojoidaffonhefmkgo).
 
+[![Chrome Web Store Version](https://img.shields.io/chrome-web-store/v/hpdmcogknijiaifojoidaffonhefmkgo?style=for-the-badge&logo=chromewebstore&logoColor=yellow&logoSize=auto&color=lightgreen)](https://chromewebstore.google.com/detail/matrix%C2%B3/hpdmcogknijiaifojoidaffonhefmkgo)
+
 For the latest development version, follow these steps:
 
 1. Clone or download this repository.
