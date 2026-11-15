@@ -13,6 +13,9 @@ This extension provides an interface to `Content-Security-Policy`, so
 familiarity with the CSP3 specification is a bonus, but built-in **Help**
 includes examples for common tasks.
 
+There is more information available in the
+[wiki](https://github.com/taviso/matrix3/wiki) and [FAQ](https://github.com/taviso/matrix3/wiki/Frequently-Asked-Questions).
+
 ## Installation
 
 Install the latest stable version via the [Chrome Web Store](https://chromewebstore.google.com/detail/matrix%C2%B3/hpdmcogknijiaifojoidaffonhefmkgo).
