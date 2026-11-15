@@ -96,13 +96,18 @@ const kReportUrls = new Set([
 ]);
 
 // Monitor for CSP violation reports.
+// Reports to wss://_matrix3.internal/csp-report have type "websocket" because
+// Chrome's ToWebRequestResourceType checks the wss:// scheme before kReport.
+// Page JS cannot forge these: new WebSocket() is always a bodyless GET, and
+// fetch/XHR/sendBeacon reject wss:// URLs.
 chrome.webRequest.onBeforeRequest.addListener(async (details) => {
-        if (!kReportUrls.has(details.url))
+        let tabIds = [];
+
+        if (!kReportUrls.has(details.url) || details.method !== "POST" || !details.requestBody)
             return;
 
         console.debug("service", "onbeforerequest", details.tabId, details);
 
-        let tabIds = [];
         if (details.tabId !== -1) {
             // Drop reports from documents that no longer exist -- POSTs from the
             // previous page can still be in flight when the user reloads.
@@ -135,7 +140,7 @@ chrome.webRequest.onBeforeRequest.addListener(async (details) => {
 
     }, {
         types: [ "csp_report", "websocket" ],
-         urls: [ "<all_urls>" ]
+         urls: Array.from(kReportUrls)
     }, [ "requestBody" ]
 );
 
@@ -148,6 +153,7 @@ chrome.webRequest.onBeforeRequest.addListener(async (details) => {
 //      the browser's HTTP cache (details.fromCache is false).
 chrome.webRequest.onCompleted.addListener(async (details) => {
         let origin;
+        let tabIds = [];
 
         if (details.tabId === -1) {
             // Tabless request from a background worker or SW script update.
@@ -164,7 +170,6 @@ chrome.webRequest.onCompleted.addListener(async (details) => {
 
         // Tabless worker requests aren't tied to a single tabId, so notify
         // any open tabs matching the worker's origin.
-        let tabIds = [];
         if (details.tabId !== -1) {
             tabIds.push(details.tabId);
         } else {
