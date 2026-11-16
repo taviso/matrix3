@@ -9,3 +9,4 @@ playwright-report/
 *.md
 !README.md
 !tools/dot.png
+tools/__pycache__/
