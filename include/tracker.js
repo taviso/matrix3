@@ -7,7 +7,11 @@ import * as psl from '/include/psl.js'
 // the user can grant per-host permissions without navigating to each blocked
 // origin and editing them one at a time.
 const kMaxDomains = 128;
+const kMaxHeaders = 128;
+const kMaxRedirects = 128;
 const kMaxSources = 1024;
+const kMaxDocuments = 1024;
+const kMaxWorkers = 1024;
 
 // Tab violation and policy tracking.
 class Tab {
@@ -230,7 +234,7 @@ export default class ViolationTracker {
         if (tabId === -1 || !fromUrl || !toUrl)
             return;
         let redirects = this.#getOrCreateTab(tabId).redirects;
-        if (redirects.size >= 128)
+        if (redirects.size >= kMaxRedirects)
             redirects.delete(redirects.keys().next().value);
         redirects.set(fromUrl, toUrl);
     }
@@ -249,7 +253,7 @@ export default class ViolationTracker {
         await this.#state;
         let docs = this.#getOrCreateTab(tabId).documents;
 
-        if (docs.size >= kMaxSources) {
+        if (docs.size >= kMaxDocuments) {
             console.debug("tracker", "document cap reached, dropping document", tabId, documentId, url);
             return;
         }
@@ -303,7 +307,7 @@ export default class ViolationTracker {
         server[domain] ??= new Set();
 
         // Cap recorded server headers per domain in case subframes reload with unique nonces.
-        if (server[domain].size >= kMaxDomains) {
+        if (server[domain].size >= kMaxHeaders) {
             console.debug("tracker", "header cap reached, dropping server policy", tabId, domain);
             return;
         }
@@ -335,7 +339,7 @@ export default class ViolationTracker {
             return false;
         if (this.#workers.has(u.origin))
             return false;
-        if (this.#workers.size >= kMaxSources) {
+        if (this.#workers.size >= kMaxWorkers) {
             console.debug("tracker", "worker cap reached, evicting oldest worker", u.origin);
             this.#workers.delete(this.#workers.values().next().value);
         }
