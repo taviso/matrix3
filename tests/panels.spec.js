@@ -952,6 +952,41 @@ test.describe('Extension Panels, Buttons, and Options', () => {
         const serverOnlyViolations = await getReportedViolations(report);
         expect(serverOnlyViolations).toEqual({});
 
+        //    Conversely, when a host rule with workers disabled uses the csp-report WAR endpoint,
+        //    report POSTs must complete cleanly (200 OK in onCompleted, zero onErrorOccurred).
+        await setDefaultPolicy(serviceWorker, 1);
+        await serviceWorker.evaluate(() => {
+            const completed = [];
+            const errors = [];
+            const filter = { urls: [chrome.runtime.getURL('csp-report')], types: ['csp_report'] };
+            const onCompleted = (d) => completed.push({ method: d.method, statusCode: d.statusCode });
+            const onError = (d) => errors.push({ method: d.method, error: d.error });
+            chrome.webRequest.onCompleted.addListener(onCompleted, filter);
+            chrome.webRequest.onErrorOccurred.addListener(onError, filter);
+            globalThis.__warReportStatus = () => ({ completed, errors });
+            globalThis.__warReportCleanup = () => {
+                chrome.webRequest.onCompleted.removeListener(onCompleted);
+                chrome.webRequest.onErrorOccurred.removeListener(onError);
+                delete globalThis.__warReportStatus;
+                delete globalThis.__warReportCleanup;
+            };
+        });
+        try {
+            await getSourceCheckbox(report, "'none'", 'connect-src').check();
+            await testbench.goto('http://127.0.0.1:8123/');
+            await getOnloadBadges(testbench);
+            await expect
+                .poll(() => serviceWorker.evaluate(() => globalThis.__warReportStatus()))
+                .toEqual({
+                    completed: expect.arrayContaining([{ method: 'POST', statusCode: 200 }]),
+                    errors: [],
+                });
+        } finally {
+            await serviceWorker.evaluate(() => globalThis.__warReportCleanup?.());
+            await report.locator('#reset').click();
+            await waitForPanelIdle(report);
+        }
+
         // 3. Three-way Cloud Sync merge & deletion tracking via synced baseline (#mergeGroupOrigins, pushToCloud, pullFromCloud)
         const syncResult = await report.evaluate(async () => {
             const { RulesManager } = await import('/include/sidepanel.js');
