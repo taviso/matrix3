@@ -180,13 +180,15 @@ export default class ViolationTracker {
         }
         policy[domain] ??= Object.create(null);
         let sources = policy[domain][report.directive] ??= new Set();
+        if (sources.has(blocked))
+            return false;
         // Cap unique origins per directive and fold any overflow into the scheme.
         if (sources.size >= kMaxSources && blocked.includes("://")) {
             console.debug("tracker", "source cap reached", tabId, domain, report.directive, blocked);
             blocked = blockedUrl.protocol;
+            if (sources.has(blocked))
+                return false;
         }
-        if (sources.has(blocked))
-            return false;
         sources.add(blocked);
         this.#saveState();
 

@@ -405,9 +405,27 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
             await vt.resetServerPolicy(9999);
 
             // 1,100 distinct blocked https:// origins on frame0.com: first 1,024 are stored
-            // individually, 1,025th folds into "https:", and subsequent ones are deduplicated.
+            // individually; a repeat report for an already-stored origin at 1,024 must NOT fold
+            // into "https:", whereas the 1,025th distinct origin folds into "https:".
             await vt.addDocument(9999, 'doc-0', 'https://frame0.com/');
-            for (let i = 0; i < 1100; i++) {
+            for (let i = 0; i < 1024; i++) {
+                await vt.addTabViolation(9999, {
+                    report: { 'document-uri': 'https://frame0.com/' },
+                    directive: 'connect-src',
+                    blocked: new URL(`https://s${i}.invalid/`),
+                    documentId: 'doc-0',
+                });
+            }
+            const repeatAtCapAdded = await vt.addTabViolation(9999, {
+                report: { 'document-uri': 'https://frame0.com/' },
+                directive: 'connect-src',
+                blocked: new URL('https://s0.invalid/'),
+                documentId: 'doc-0',
+            });
+            const dirsAtCap = await vt.getDirectives(9999, 'frame0.com');
+            const countBeforeOverflow = dirsAtCap['connect-src']?.length ?? 0;
+            const hasHttpsBeforeOverflow = dirsAtCap['connect-src']?.includes('https:') ?? false;
+            for (let i = 1024; i < 1100; i++) {
                 await vt.addTabViolation(9999, {
                     report: { 'document-uri': 'https://frame0.com/' },
                     directive: 'connect-src',
@@ -467,6 +485,9 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
             const pollutedProto = 'img-src' in Object.prototype || 'img-src' in Object;
             await vt.resetTab(9998);
             return {
+                repeatAtCapAdded,
+                countBeforeOverflow,
+                hasHttpsBeforeOverflow,
                 connectCount: firstDirs['connect-src']?.length ?? 0,
                 hasHttpsScheme: firstDirs['connect-src']?.includes('https:') ?? false,
                 fakeAdded,
@@ -481,6 +502,9 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
             };
         });
         expect(trackerCaps).toEqual({
+            repeatAtCapAdded: false,
+            countBeforeOverflow: 1024,
+            hasHttpsBeforeOverflow: false,
             connectCount: 1025,
             hasHttpsScheme: true,
             fakeAdded: false,
