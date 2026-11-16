@@ -36,13 +36,9 @@ class Tab {
             for (let [dir, srcs] of Object.entries(dirs))
                 this.policy[domain][dir] = new Set(srcs);
         }
-        this.documents.clear();
-        if (Array.isArray(data.documents)) {
-            data.documents.forEach(d => this.documents.set(d, ""));
-        } else {
-            for (let [id, url] of Object.entries(data.documents ?? {}))
-                this.documents.set(id, url);
-        }
+        // Chrome's SessionStorageManager::OnExtensionUnloaded clears session
+        // storage on extension update or reload, so no legacy format migration is needed.
+        this.documents = new Map(Object.entries(data.documents ?? {}));
         return this;
     }
 
@@ -218,11 +214,8 @@ export default class ViolationTracker {
     async resetViolations(tabId) {
         await this.#state;
         let tab = this.#getOrCreateTab(tabId);
-        for (let url of tab.documents.values()) {
-            let origin = URL.parse(url)?.origin;
-            if (origin)
-                this.#workers.delete(origin);
-        }
+        for (let origin of tab.documents.values())
+            this.#workers.delete(origin);
         tab.policy = Object.create(null);
         tab.documents.clear();
         tab.redirects.clear();
@@ -247,7 +240,7 @@ export default class ViolationTracker {
     }
 
     // Track which documentIds are currently live for the tab (along with their
-    // effective origin URL) so we can drop csp_reports from documents that no
+    // effective origin) so we can drop csp_reports from documents that no
     // longer exist and attribute opaque-origin reports back to their owner.
     async addDocument(tabId, documentId, url, parentDocumentId) {
         await this.#state;
@@ -258,12 +251,13 @@ export default class ViolationTracker {
             return;
         }
 
-        // Local-scheme subframes (about:srcdoc, about:blank, data:) have no
-        // hostname of their own, so inherit the parent document's URL.
-        if (!URL.parse(url)?.hostname && docs.has(parentDocumentId))
-            url = docs.get(parentDocumentId);
+        // Local-scheme subframes (about:srcdoc, about:blank, data:) have an
+        // opaque "null" origin, so inherit the parent document's origin.
+        let origin = URL.parse(url)?.origin;
+        if ((!origin || origin === "null") && docs.has(parentDocumentId))
+            origin = docs.get(parentDocumentId);
 
-        docs.set(documentId, url);
+        docs.set(documentId, origin ?? "null");
         this.#saveState();
     }
 
@@ -280,12 +274,8 @@ export default class ViolationTracker {
             return [];
         let matching = [];
         for (let [tabId, tab] of this.#tabs) {
-            for (let url of tab.documents.values()) {
-                if (URL.parse(url)?.origin === origin) {
-                    matching.push(tabId);
-                    break;
-                }
-            }
+            if (tab.documents.values().some(o => o === origin))
+                matching.push(tabId);
         }
         return matching;
     }

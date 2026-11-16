@@ -1126,7 +1126,7 @@ test.describe('Extension Panels, Buttons, and Options', () => {
                 777: {
                     server: { '127.0.0.1': await t1.getServerPolicy(777, '127.0.0.1') },
                     policy: { '127.0.0.1': await t1.getDirectives(777, '127.0.0.1') },
-                    documents: { 'doc-main': 'http://127.0.0.1:8123/' },
+                    documents: { 'doc-main': 'http://127.0.0.1:8123' },
                 },
             };
             await chrome.storage.session.set({
