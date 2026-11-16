@@ -6,6 +6,7 @@
 
 import html
 import http.server
+import json
 import os
 import sys
 import urllib.parse
@@ -71,7 +72,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.send_error(HTTPStatus.NOT_FOUND)
 
     def _cookie_echo(self):
-        import json
         parsed = urllib.parse.urlsplit(self.path)
         qs = urllib.parse.parse_qs(parsed.query)
         cookie_hdr = self.headers.get('Cookie', '')
