@@ -493,6 +493,9 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
             const swCount = swList.length;
             const swOldestEvicted = !swList.includes('sw0.com');
             const swNewestKept = swList.includes('sw1024.com');
+            for (let i = 1; i < 1025; i++) {
+                await vt.delServiceWorker(`sw${i}.com`);
+            }
 
             return {
                 repeatAtCapAdded,
