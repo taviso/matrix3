@@ -94,7 +94,7 @@ export default class Options {
         }
 
         for (let callback of Options.#listeners)
-            callback(Options.#cache);
+            await callback(Options.#cache);
     }
 
     static #load() {
