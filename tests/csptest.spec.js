@@ -484,6 +484,16 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
             const ctorServer = await vt.getServerPolicy(9998, 'constructor');
             const pollutedProto = 'img-src' in Object.prototype || 'img-src' in Object;
             await vt.resetTab(9998);
+
+            // 4. Verify addServiceWorker acts as a 1,024-entry FIFO circular buffer.
+            for (let i = 0; i < 1025; i++) {
+                await vt.addServiceWorker(`https://sw${i}.com/sw.js`);
+            }
+            const swList = await vt.getServiceWorkers();
+            const swCount = swList.length;
+            const swOldestEvicted = !swList.includes('sw0.com');
+            const swNewestKept = swList.includes('sw1024.com');
+
             return {
                 repeatAtCapAdded,
                 countBeforeOverflow,
@@ -499,6 +509,9 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
                 protoImgSrc: protoDirs['img-src'] ?? [],
                 ctorServer,
                 pollutedProto,
+                swCount,
+                swOldestEvicted,
+                swNewestKept,
             };
         });
         expect(trackerCaps).toEqual({
@@ -516,6 +529,9 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
             protoImgSrc: ['https://*.example.net'],
             ctorServer: ["default-src 'self'"],
             pollutedProto: false,
+            swCount: 1024,
+            swOldestEvicted: true,
+            swNewestKept: true,
         });
     });
 

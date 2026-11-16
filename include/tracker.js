@@ -336,8 +336,8 @@ export default class ViolationTracker {
         if (this.#workers.has(u.origin))
             return false;
         if (this.#workers.size >= kMaxSources) {
-            console.debug("tracker", "worker cap reached, dropping worker", u.origin);
-            return false;
+            console.debug("tracker", "worker cap reached, evicting oldest worker", u.origin);
+            this.#workers.delete(this.#workers.values().next().value);
         }
         this.#workers.add(u.origin);
         this.#saveState();
