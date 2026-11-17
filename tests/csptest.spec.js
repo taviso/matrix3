@@ -648,6 +648,9 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
         await testbench.locator('#builder-source').selectOption("'nonce-test-nonce'");
         await testbench.locator('#builder-append-btn').click();
 
+        await testbench.locator('#builder-source').selectOption("'wasm-unsafe-eval'");
+        await testbench.locator('#builder-append-btn').click();
+
         await testbench.locator('#builder-source').selectOption('__other__');
         await testbench.locator('#builder-custom').fill('https://cdn.jsdelivr.net/npm/d3/');
         await testbench.locator('#builder-append-btn').click();
@@ -679,9 +682,14 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
         // Accept replaces selections with only the server policy (translating nonce -> 'unsafe-inline' + 'self')
         await report.locator('button#accept').click();
         await expect(await getSourceCheckbox(report, "'unsafe-inline'", 'script-src').locator()).toBeChecked();
+        await expect(await getSourceCheckbox(report, "'wasm-unsafe-eval'", 'script-src').locator()).toBeChecked();
         await expect(await getSourceCheckbox(report, "'self'", 'script-src').locator()).toBeChecked();
         await expect(await getSourceCheckbox(report, 'https://cdn.jsdelivr.net', 'script-src').locator()).toBeChecked();
         await expect(await getSourceCheckbox(report, 'https:', 'style-src').locator()).not.toBeChecked();
+
+        // Unchecking an advanced source imported via Accept ('wasm-unsafe-eval') must not make its row vanish mid-edit
+        await getSourceCheckbox(report, "'wasm-unsafe-eval'", 'script-src').uncheck();
+        await expect(report.locator('table#sources tbody th[title="\'wasm-unsafe-eval\'"]')).toBeVisible();
     });
 
     test('Additive CSP (operation: "append"): intersection with multiple & comma-combined server headers and nonce preservation', async ({

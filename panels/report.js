@@ -331,6 +331,8 @@ function findCheckbox(source, directive, autoAdd, container = directivesTable.tB
         console.debug("report", `source name ${source} is unknown, adding`);
         row = addSourceCheckboxRow(source, container);
     }
+    if (autoAdd)
+        row?.classList.remove("advanced");
 
     return row?.directives[directive] ?? null;
 }
@@ -343,8 +345,6 @@ function setSourceCheckboxState(source, directive, state, className, container =
     if (!box)
         return;
     box.checked = state;
-    if (state)
-        box.closest("tr").classList.remove("advanced");
     if (className)
         box.classList.add(className);
 }
@@ -352,10 +352,8 @@ function setSourceCheckboxState(source, directive, state, className, container =
 function setSourceCheckboxClass(source, directive, className, container = directivesTable.tBodies[0])
 {
     let box = findCheckbox(source, directive, true, container);
-    if (box) {
+    if (box)
         box.classList.add(className);
-        box.closest("tr").classList.remove("advanced");
-    }
 }
 
 function getSourceCheckboxState(source, directive, container = directivesTable.tBodies[0])
