@@ -203,6 +203,90 @@ test.describe('Extension Panels, Buttons, and Options', () => {
         await expect(testbench.locator('#onload-summary')).toHaveText('23 Probes');
     });
 
+    test('A session rule replaces (does not intersect with) the dynamic rule for the same host, and Abandon restores it', async ({
+        serviceWorker,
+        testbench,
+        openPanel,
+    }) => {
+        await setDefaultPolicy(serviceWorker, 1);
+        await testbench.reload();
+        const report = await openPanel('report');
+
+        const selfConnect = getSourceCheckbox(report, "'self'", 'connect-src');
+        const noneConnect = getSourceCheckbox(report, "'none'", 'connect-src');
+        const githubConnect = getSourceCheckbox(report, 'https://*.github.com', 'connect-src');
+
+        // Reload the testbench and read the two connect-src probes:
+        // fetch-self = fetch('/dot.png'), fetch = fetch('https://api.github.com/').
+        const reloadAndProbe = async () => {
+            await testbench.reload();
+            const badges = await getOnloadBadges(testbench);
+            await waitForPanelIdle(report);
+            return { fetchSelf: badges['fetch-self'], fetch: badges['fetch'] };
+        };
+        const hostRulePriorities = () => serviceWorker.evaluate(async () => {
+            const pick = (rules) => rules
+                .filter((r) => r.condition.urlFilter === '||127.0.0.1^')
+                .map((r) => `${r.action.type}:${r.priority}`)
+                .sort();
+            return {
+                session: pick(await chrome.declarativeNetRequest.getSessionRules()),
+                dynamic: pick(await chrome.declarativeNetRequest.getDynamicRules()),
+            };
+        });
+
+        try {
+            // #commit and #abandon run in the body click handler, outside the "report" lock, so
+            // waitForPanelIdle() can return before the dNR update lands; poll dNR instead.
+            const kDynamicPair = ['allow:41', 'modifyHeaders:42'];
+            const kSessionPair = ['allow:43', 'modifyHeaders:44'];
+            const clickAndWait = async (button, expected) => {
+                await report.locator(button).click();
+                await expect.poll(hostRulePriorities).toEqual(expected);
+                await waitForPanelIdle(report);
+            };
+
+            // Baseline (firstparty static default): connect-src 'self'.
+            expect(await reloadAndProbe()).toEqual({ fetchSelf: 'Allowed', fetch: 'Blocked' });
+
+            // 1. Dynamic rule that blocks everything: connect-src 'none', committed.
+            await noneConnect.check();
+            await clickAndWait('#commit', { session: [], dynamic: kDynamicPair });
+            expect(await reloadAndProbe()).toEqual({ fetchSelf: 'Blocked', fetch: 'Blocked' });
+
+            // 2. Looser session draft on top: connect-src 'self' https://*.github.com.
+            //    If the browser enforced both policies (intersection), everything would stay blocked;
+            //    the session rule's allow override must suppress the same host's dynamic append.
+            //    127.0.0.1 has 4 labels: dynamic pair at 10*4 + 1..2, session pair at 10*4 + 3..4.
+            await githubConnect.check();
+            await selfConnect.check();
+            await expect(await noneConnect.locator()).not.toBeChecked();
+            expect(await hostRulePriorities()).toEqual({ session: kSessionPair, dynamic: kDynamicPair });
+            expect(await reloadAndProbe()).toEqual({ fetchSelf: 'Allowed', fetch: 'Allowed' });
+
+            // 3. Abandon drops the session pair, so the dynamic 'none' rule is enforced again.
+            await clickAndWait('#abandon', { session: [], dynamic: kDynamicPair });
+            await expect(await noneConnect.locator()).toBeChecked();
+            expect(await reloadAndProbe()).toEqual({ fetchSelf: 'Blocked', fetch: 'Blocked' });
+
+            // 4. The reverse: a stricter session draft over a looser dynamic rule.
+            await githubConnect.check();
+            await selfConnect.check();
+            await clickAndWait('#commit', { session: [], dynamic: kDynamicPair });
+            expect(await reloadAndProbe()).toEqual({ fetchSelf: 'Allowed', fetch: 'Allowed' });
+
+            await githubConnect.uncheck();
+            expect(await hostRulePriorities()).toEqual({ session: kSessionPair, dynamic: kDynamicPair });
+            expect(await reloadAndProbe()).toEqual({ fetchSelf: 'Allowed', fetch: 'Blocked' });
+
+            await clickAndWait('#abandon', { session: [], dynamic: kDynamicPair });
+            expect(await reloadAndProbe()).toEqual({ fetchSelf: 'Allowed', fetch: 'Allowed' });
+        } finally {
+            await report.locator('#reset').click();
+            await waitForPanelIdle(report);
+        }
+    });
+
     test('Rules panel: session, dynamic, and static tables, filter, select all, invert, commit, uncommit, and remove', async ({
         openPanel,
     }) => {
