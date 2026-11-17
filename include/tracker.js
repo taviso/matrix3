@@ -214,8 +214,15 @@ export default class ViolationTracker {
     async resetViolations(tabId) {
         await this.#state;
         let tab = this.#getOrCreateTab(tabId);
-        for (let origin of tab.documents.values())
-            this.#workers.delete(origin);
+
+        // Forget Service Workers for this tab's origins so the unregister
+        // button doesn't stay enabled after the worker is gone. Keep any
+        // origin another tab still has open, it may still be controlled.
+        for (let origin of tab.documents.values()) {
+            if (!this.#getTabsWithOrigin(origin).some(id => id !== tabId))
+                this.#workers.delete(origin);
+        }
+
         tab.policy = Object.create(null);
         tab.documents.clear();
         tab.redirects.clear();
@@ -266,18 +273,23 @@ export default class ViolationTracker {
         return this.#tabs.get(tabId)?.documents.has(documentId) ?? false;
     }
 
-    // Resolve tabless reports (ServiceWorker / SharedWorker, where tabId is -1)
-    // to any open tabs that currently have a committed document on that origin.
-    async findTabsForOrigin(origin) {
-        await this.#state;
-        if (!origin || origin === "null")
-            return [];
+    // Return the ids of all tabs that have a committed document on origin.
+    #getTabsWithOrigin(origin) {
         let matching = [];
         for (let [tabId, tab] of this.#tabs) {
             if (tab.documents.values().some(o => o === origin))
                 matching.push(tabId);
         }
         return matching;
+    }
+
+    // Resolve tabless reports (ServiceWorker / SharedWorker, where tabId is -1)
+    // to any open tabs that currently have a committed document on that origin.
+    async findTabsForOrigin(origin) {
+        await this.#state;
+        if (!origin || origin === "null")
+            return [];
+        return this.#getTabsWithOrigin(origin);
     }
 
     async addServerPolicy(tabId, url, header) {
