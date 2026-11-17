@@ -582,6 +582,67 @@ test.describe('Extension Panels, Buttons, and Options', () => {
             .toBe(1);
     });
 
+    test('Concurrent rule edits from multiple panels do not collide on rule IDs', async ({ serviceWorker, testbench, openPanel }) => {
+        const reportA = await openPanel('report');
+        const reportB = await openPanel('report');
+        const manage = await openPanel('manage');
+        const panels = [reportA, reportB, manage];
+
+        const panelHosts = (page) => page.evaluate(async () => {
+            const { RulesManager } = await import('/include/sidepanel.js');
+            return RulesManager.getRules().map((r) => `${r.isSession ? 'session' : 'dynamic'}:${r.host}`).sort();
+        });
+        const liveHosts = () => serviceWorker.evaluate(async () => {
+            const [session, dynamic] = await Promise.all([
+                chrome.declarativeNetRequest.getSessionRules(),
+                chrome.declarativeNetRequest.getDynamicRules(),
+            ]);
+            const hosts = (rules, kind) => rules
+                .filter((r) => r.action.type === 'modifyHeaders' && r.condition.urlFilter)
+                .map((r) => `${kind}:${r.condition.urlFilter.slice(2, -1)}`);
+            return [...hosts(session, 'session'), ...hosts(dynamic, 'dynamic')].sort();
+        });
+
+        // Seed a session rule for c.test and wait until every panel's mirror has picked it up.
+        await reportA.evaluate(async () => {
+            const { RulesManager } = await import('/include/sidepanel.js');
+            const { default: Policy } = await import('/include/policy.js');
+            await RulesManager.addSessionRule('c.test', new Policy("img-src 'self'"));
+        });
+        for (const page of panels) {
+            await expect.poll(() => panelHosts(page)).toEqual(['session:c.test']);
+        }
+
+        // Each panel mutates rules at the same moment, starting from the same synced mirror.
+        const attempt = (page, fn, arg) => page.evaluate(async ({ fn, arg }) => {
+            const { RulesManager } = await import('/include/sidepanel.js');
+            const { default: Policy } = await import('/include/policy.js');
+            try {
+                if (fn === 'add') await RulesManager.addSessionRule(arg, new Policy("script-src 'self'"));
+                if (fn === 'commit') await RulesManager.commitSessionRulesForHost(arg);
+                return 'ok';
+            } catch (e) {
+                return String(e?.message ?? e);
+            }
+        }, { fn, arg });
+
+        const results = await Promise.all([
+            attempt(reportA, 'add', 'a.test'),
+            attempt(reportB, 'add', 'b.test'),
+            attempt(manage, 'commit', 'c.test'),
+        ]);
+
+        expect(results).toEqual(['ok', 'ok', 'ok']);
+
+        const expected = ['dynamic:c.test', 'session:a.test', 'session:b.test'];
+        expect(await liveHosts()).toEqual(expected);
+
+        // Every panel's mirror must converge on the live dNR state.
+        for (const page of panels) {
+            await expect.poll(() => panelHosts(page)).toEqual(expected);
+        }
+    });
+
     test('Help and About panels: example tables, version, and live rule statistics', async ({
         openPanel,
     }) => {
@@ -982,7 +1043,14 @@ test.describe('Extension Panels, Buttons, and Options', () => {
             };
         });
         try {
-            await getSourceCheckbox(report, "'none'", 'connect-src').check();
+            // The Report panel rebuilds its table (updateReport) after the options change from
+            // setDefaultPolicy above; a click that lands just before that rebuild is discarded by
+            // setCurrentRules, so retry until the session rule actually exists.
+            await expect(async () => {
+                await getSourceCheckbox(report, "'none'", 'connect-src').check();
+                const rules = await serviceWorker.evaluate(() => chrome.declarativeNetRequest.getSessionRules());
+                expect(rules.some((r) => r.condition.urlFilter === '||127.0.0.1^')).toBe(true);
+            }).toPass();
             await testbench.goto('http://127.0.0.1:8123/');
             await getOnloadBadges(testbench);
             await expect

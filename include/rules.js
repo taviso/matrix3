@@ -1,6 +1,7 @@
 import Policy from '/include/policy.js'
 import Options from '/include/options.js'
 import { MessageTypes } from '/include/commands.js'
+import { callWithLock } from '/include/utils.js'
 
 // dNR priorities are ordinal. Host rules scale by hostname label count L
 // (e.g. "foo.com" => L=2, "sub.foo.com" => L=3) so a more-specific subdomain's
@@ -307,6 +308,57 @@ export default class Rules {
         return ++this.#id;
     }
 
+    // Every panel has its own Rules instance and id counter, so changes to
+    // dNR rules are serialized across all extension pages with a shared lock.
+    // The mirror is resynced inside the lock, so new ids can't collide with
+    // rules another panel just added, and removed ids can't be stale.
+    #exclusive(fn) {
+        return callWithLock("dnr", async () => {
+            await this.init();
+            return fn();
+        });
+    }
+
+    addSessionRule(hostName, rulePolicy) {
+        return this.#exclusive(() => this.#addSessionRule(hostName, rulePolicy));
+    }
+
+    abandonSessionRulesForHost(hostName) {
+        return this.#exclusive(() => this.#abandonSessionRulesForHost(hostName));
+    }
+
+    commitSessionRulesForHost(hostName) {
+        return this.#exclusive(() => this.#commitSessionRulesForHost(hostName));
+    }
+
+    uncommitDynamicRulesForHost(hostName) {
+        return this.#exclusive(() => this.#uncommitDynamicRulesForHost(hostName));
+    }
+
+    resetHostRules(hostName) {
+        return this.#exclusive(() => this.#resetHostRules(hostName));
+    }
+
+    delRule(rule) {
+        return this.#exclusive(() => this.#delRule(rule));
+    }
+
+    replaceAllRules(session, dynamic) {
+        return this.#exclusive(() => this.#replaceAllRules(session, dynamic));
+    }
+
+    pullFromCloud() {
+        return this.#exclusive(() => this.#pullFromCloud());
+    }
+
+    addTabExemption(tabId) {
+        return this.#exclusive(() => this.#addTabExemption(tabId));
+    }
+
+    delTabExemption(tabId) {
+        return this.#exclusive(() => this.#delTabExemption(tabId));
+    }
+
     // Wrap dNR mutation APIs so every change broadcasts NOTIFY_RULES to
     // sidepanels in other windows (their `#rules` mirror is now stale).
     async #updateSessionRules(opts) {
@@ -378,7 +430,7 @@ export default class Rules {
     // its lower tier offset (10L + 1..2 vs session's 10L + 3..4) so the session
     // pair suppresses it at runtime, and Abandon can delete the session pair to
     // restore the dynamic pair.
-    async addSessionRule(hostName, rulePolicy) {
+    async #addSessionRule(hostName, rulePolicy) {
         let rule = new Rule(null, true);
         let oldSession = this.#findSessionForHost(hostName);
 
@@ -405,7 +457,7 @@ export default class Rules {
     }
 
     // Delete the session rule for hostName (if any); any dynamic rule stays put.
-    async abandonSessionRulesForHost(hostName) {
+    async #abandonSessionRulesForHost(hostName) {
         let rule = this.#findSessionForHost(hostName);
 
         if (!rule) {
@@ -413,20 +465,28 @@ export default class Rules {
             return;
         }
 
-        await this.delSessionRule(rule);
+        await this.#delSessionRule(rule);
     }
 
-    async delRule(rule) {
+    async #delRule(rule) {
+        // The caller's rule may predate the resync in #exclusive (e.g. a row
+        // in the Rules panel), so delete whatever rule exists now for its
+        // host and tier.
+        if (rule?.isSession)
+            rule = this.#findSessionForHost(rule.host);
+        else if (rule)
+            rule = this.#findDynamicForHost(rule.host);
+
         if (!rule) {
             console.debug("rules", `attempted to delete null rule`);
         } else if (rule.isSession) {
-            await this.delSessionRule(rule);
+            await this.#delSessionRule(rule);
         } else {
-            await this.delDynamicRule(rule);
+            await this.#delDynamicRule(rule);
         }
     }
 
-    async delSessionRule(rule) {
+    async #delSessionRule(rule) {
         await this.#updateSessionRules({
             removeRuleIds: rule.ids,
             addRules: []
@@ -434,7 +494,7 @@ export default class Rules {
         this.#deleteRule(rule);
     }
 
-    async delDynamicRule(rule) {
+    async #delDynamicRule(rule) {
         await this.#updateDynamicRules({
             removeRuleIds: rule.ids,
             addRules: []
@@ -451,7 +511,7 @@ export default class Rules {
 
     // Bulk swap or partial replacement. Re-inits since imported ids are arbitrary.
     // If an argument is null, the existing rules in that bucket are preserved.
-    async replaceAllRules(session = [], dynamic = []) {
+    async #replaceAllRules(session = [], dynamic = []) {
         let oldSession = await chrome.declarativeNetRequest.getSessionRules();
         let oldDynamic = await chrome.declarativeNetRequest.getDynamicRules();
 
@@ -623,7 +683,7 @@ export default class Rules {
             .map(k => k.slice(k.indexOf(":") + 1));
     }
 
-    async pullFromCloud() {
+    async #pullFromCloud() {
         let mergedMap = new Map();
         let groups = await Options.getGroups();
         let storage = await chrome.storage.sync.get(null);
@@ -646,7 +706,7 @@ export default class Rules {
             mergedMap.set(rule.host, rule.toRule());
         }
 
-        await this.replaceAllRules(null, Array.from(mergedMap.values()));
+        await this.#replaceAllRules(null, Array.from(mergedMap.values()));
 
         // Drop local groups that existed at last sync and were deleted in cloud.
         for (let name of Object.keys(groups)) {
@@ -673,18 +733,18 @@ export default class Rules {
     }
 
     // Remove every session and dynamic rule for this host.
-    async resetHostRules(hostName) {
+    async #resetHostRules(hostName) {
         let session = this.#findSessionForHost(hostName);
         let dynamic = this.#findDynamicForHost(hostName);
 
-        if (session) await this.delSessionRule(session);
-        if (dynamic) await this.delDynamicRule(dynamic);
+        if (session) await this.#delSessionRule(session);
+        if (dynamic) await this.#delDynamicRule(dynamic);
     }
 
     // Demote the host's dynamic rule into a session rule (inverse of Commit).
     // No-op if there's no dynamic rule, or if a session rule already exists
     // for this host -- the user should commit or abandon that first.
-    async uncommitDynamicRulesForHost(hostName) {
+    async #uncommitDynamicRulesForHost(hostName) {
         let rule = this.#findDynamicForHost(hostName);
         let session = this.#findSessionForHost(hostName);
         if (!rule || session)
@@ -714,7 +774,7 @@ export default class Rules {
 
     // Promote the host's session rule into a dynamic rule, replacing any
     // existing dynamic. Priority is computed deterministically for the dynamic tier.
-    async commitSessionRulesForHost(hostName) {
+    async #commitSessionRulesForHost(hostName) {
         let rule = this.#findSessionForHost(hostName);
         let prev = this.#findDynamicForHost(hostName);
         if (!rule)
@@ -761,7 +821,7 @@ export default class Rules {
         return this.#exempt?.has(tabId) ?? false;
     }
 
-    async addTabExemption(tabId) {
+    async #addTabExemption(tabId) {
         if (!tabId || this.#exempt.has(tabId))
             return;
 
@@ -784,7 +844,7 @@ export default class Rules {
         this.#exempt.set(tabId, id);
     }
 
-    async delTabExemption(tabId) {
+    async #delTabExemption(tabId) {
         let id = this.#exempt.get(tabId);
         if (!id)
             return;
