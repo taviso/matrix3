@@ -290,7 +290,7 @@ function addSourceCheckboxRow(source, container = directivesTable.tBodies[0])
     row = document.createElement("tr");
     row.source = source;
     row.directives = Object.create(null);
-    if (sidepanel.helpData.sources.find(h => h.name === source)?.advanced)
+    if (sidepanel.getSourceHelp(source)?.advanced)
         row.classList.add("advanced");
     title = document.createElement("th");
 

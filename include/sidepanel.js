@@ -26,9 +26,14 @@ try {
     console.warn("sidepanel", "failed to load help data", e);
 }
 
+export function getSourceHelp(source)
+{
+    return helpData.sources.find(h => h.regex.test(source));
+}
+
 export function getRuleTooltip(source, directive)
 {
-    let sourceHelp = helpData.sources.find(h => h.regex.test(source));
+    let sourceHelp = getSourceHelp(source);
     let directiveHelp = helpData.directives[directive]?.description;
     let title = "";
 
@@ -42,7 +47,7 @@ export function getRuleTooltip(source, directive)
 
 export function isValidSource(source)
 {
-    return helpData.sources.some(h => h.regex.test(source));
+    return !!getSourceHelp(source);
 }
 
 const sidepanelPages = {
