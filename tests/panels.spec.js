@@ -395,13 +395,23 @@ test.describe('Extension Panels, Buttons, and Options', () => {
         const optionsPanel = await openPanel('options');
         const reportPanel = await openPanel('report');
 
-        // 1. #advanced checkbox toggles body.show-advanced on panels
+        // 1. #advanced checkbox toggles body.show-advanced on panels (revealing advanced directive columns and source rows)
+        const advancedSources = ["'unsafe-inline'", "'unsafe-eval'", "'wasm-unsafe-eval'", "'unsafe-hashes'", 'blob:'];
         await expect(reportPanel.locator('body')).not.toHaveClass(/\bshow-advanced\b/);
+        for (const src of advancedSources) {
+            await expect(reportPanel.locator(`table#sources tbody th[title="${src}"]`)).not.toBeVisible();
+        }
         await optionsPanel.locator('#advanced').check();
         await expect(reportPanel.locator('body')).toHaveClass(/\bshow-advanced\b/);
         await expect(reportPanel.locator('table#sources th#child-src')).toBeVisible();
+        for (const src of advancedSources) {
+            await expect(reportPanel.locator(`table#sources tbody th[title="${src}"]`)).toBeVisible();
+        }
         await optionsPanel.locator('#advanced').uncheck();
         await expect(reportPanel.locator('body')).not.toHaveClass(/\bshow-advanced\b/);
+        for (const src of advancedSources) {
+            await expect(reportPanel.locator(`table#sources tbody th[title="${src}"]`)).not.toBeVisible();
+        }
 
         // 2. #defaultpolicy range slider updates enabled static rulesets
         await optionsPanel.locator('#defaultpolicy').fill('1');

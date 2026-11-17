@@ -8,6 +8,7 @@
     {
       "name": "'unsafe-inline'",
       "regex": "^'unsafe-inline'$",
+      "advanced": true,
       "description": "Allows the use of inline resources, such as inline <script> elements, <style> elements, and inline event handlers."
     },
     {
@@ -18,16 +19,19 @@
     {
       "name": "'unsafe-eval'",
       "regex": "^'unsafe-eval'$",
+      "advanced": true,
       "description": "Allows the use of eval() and other similar methods for creating code from strings."
     },
     {
       "name": "'wasm-unsafe-eval'",
       "regex": "^'wasm-unsafe-eval'$",
+      "advanced": true,
       "description": "Allows the use of WebAssembly.instantiate() and other similar methods."
     },
     {
       "name": "'unsafe-hashes'",
       "regex": "^'unsafe-hashes'$",
+      "advanced": true,
       "description": "Allows the use of inline event handlers (like onclick) if their content matches a trusted hash."
     },
     {
@@ -43,6 +47,7 @@
     {
       "name": "blob:",
       "regex": "^blob:$",
+      "advanced": true,
       "description": "Allows loading resources from blob: URLs (e.g., created with URL.createObjectURL)."
     },
     {

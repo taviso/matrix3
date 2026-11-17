@@ -200,11 +200,29 @@ test.describe('Report Panel: Allowing, Denying, Mutex, & Sandbox Controls', () =
         await expect(await imgNone.locator()).not.toBeChecked();
         await expect(await imgSelf.locator()).toBeChecked();
 
+        // In First Party mode, 'wasm-unsafe-eval' and 'unsafe-hashes' are unchecked and unviolated
+        // (so their .advanced rows are hidden), whereas 'unsafe-eval' is checked (so its row is visible).
+        const evalRow = report.locator('table#sources tbody tr').filter({
+            has: report.locator('th[title="\'unsafe-eval\'"]'),
+        });
+        const wasmRow = report.locator('table#sources tbody tr').filter({
+            has: report.locator('th[title="\'wasm-unsafe-eval\'"]'),
+        });
+        const hashesRow = report.locator('table#sources tbody tr').filter({
+            has: report.locator('th[title="\'unsafe-hashes\'"]'),
+        });
+        await expect(evalRow).toBeVisible();
+        await expect(wasmRow).not.toBeVisible();
+        await expect(hashesRow).not.toBeVisible();
+
         // Also deny eval(), inline styles, cross-origin fonts, and same-origin fetch
         await getSourceCheckbox(report, "'unsafe-eval'", 'script-src').uncheck();
         await getSourceCheckbox(report, "'unsafe-inline'", 'style-src').uncheck();
         await getSourceCheckbox(report, 'https:', 'font-src').uncheck();
         await getSourceCheckbox(report, "'none'", 'connect-src').check();
+
+        // Unchecking 'unsafe-eval' keeps its row visible during the current edit session (no layout jump)
+        await expect(evalRow).toBeVisible();
 
         await testbench.reload();
 
@@ -216,6 +234,11 @@ test.describe('Report Panel: Allowing, Denying, Mutex, & Sandbox Controls', () =
         expect(badges['img-data']).toBe('Blocked');
         expect(badges['font-cross']).toBe('Blocked');
         expect(badges['fetch-self']).toBe('Blocked');
+
+        // After reload, the eval() violation automatically reveals the 'unsafe-eval' row (and 'wasm-unsafe-eval' row)
+        await expect(evalRow).toBeVisible();
+        await expect(wasmRow).toBeVisible();
+        await expect(hashesRow).not.toBeVisible();
     });
 
     test('toggling sandbox in Report panel enforces sandbox flags and seeds first-party fallback when disabled', async ({ serviceWorker, testbench, openPanel }) => {
