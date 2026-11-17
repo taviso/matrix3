@@ -727,6 +727,48 @@ test.describe('Extension Panels, Buttons, and Options', () => {
         }
     });
 
+    test('Keyboard input cannot edit rules on a Disabled tab or a protected origin (interactivity: inert)', async ({
+        serviceWorker,
+        testbench,
+        openPanel,
+    }) => {
+        await setDefaultPolicy(serviceWorker, 1);
+        await testbench.reload();
+        const report = await openPanel('report');
+
+        const hostRules = () => serviceWorker.evaluate(async () =>
+            (await chrome.declarativeNetRequest.getSessionRules()).filter((r) => r.condition.urlFilter)
+        );
+        // Focus a control the way a keyboard user would, then press a key on it.
+        const focusAndPress = async (locator, key) => {
+            await locator.focus();
+            await report.keyboard.press(key);
+            await waitForPanelIdle(report);
+        };
+        const selfScript = getSourceCheckbox(report, "'self'", 'script-src');
+
+        // 1. Disabled tab: everything except Resume and Reload is inert.
+        await report.locator('#disable').click();
+        await expect(report.locator('#resume')).toBeEnabled();
+
+        await focusAndPress(await selfScript.locator(), 'Space');
+        await focusAndPress(report.locator('input#sandbox-enabled'), 'Space');
+        expect(await hostRules()).toEqual([]);
+        expect(await report.evaluate(() => document.activeElement?.tagName)).not.toBe('INPUT');
+
+        // Resume itself must still work from the keyboard.
+        await focusAndPress(report.locator('#resume'), 'Enter');
+        await expect(report.locator('#resume')).toBeDisabled();
+
+        // 2. Protected origin: the whole editing UI is inert.
+        await testbench.goto('http://chromewebstore.google.com:8123/');
+        await expect(report.locator('body')).toHaveClass(/\binert\b/);
+
+        await focusAndPress(await selfScript.locator(), 'Space');
+        expect(await hostRules()).toEqual([]);
+        expect(await report.evaluate(() => document.activeElement?.tagName)).not.toBe('INPUT');
+    });
+
     test('Help and About panels: example tables, version, and live rule statistics', async ({
         openPanel,
     }) => {

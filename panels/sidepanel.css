@@ -200,6 +200,7 @@ body.inert :is(button, table, textarea, #trustcontrol),
 body:has(button#resume:not(:disabled)) :is(button:not(#resume, #reload), table, textarea, #trustcontrol) {
     opacity: 0.4;
     pointer-events: none;
+    interactivity: inert;
 }
 
 /* Hide the trust control when there are no groups to choose from. */
