@@ -1265,7 +1265,7 @@ test.describe('Extension Panels, Buttons, and Options', () => {
 
             const finalRules = RulesManager.getRules()
                 .filter((r) => !r.isSession)
-                .map((r) => [r.host, r.policy.toHeader()])
+                .map((r) => [r.host, r.action.responseHeaders[0].value])
                 .sort(([a], [b]) => a.localeCompare(b));
             const finalTeam = structuredClone((await Options.getGroups()).Team);
             return { finalRules, finalTeam };
