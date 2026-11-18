@@ -1,5 +1,6 @@
 import * as utils from '/include/utils.js'
 import * as sidepanel from '/include/sidepanel.js'
+import Help from '/include/help.js'
 import { MessageTypes } from '/include/commands.js'
 
 let RulesManager = sidepanel.RulesManager;
@@ -9,8 +10,8 @@ const sessionTbl = document.getElementById('session');
 const staticTbl = document.getElementById('static');
 
 const kDirectiveGroups = Map.groupBy(
-    Object.keys(sidepanel.helpData.directives),
-    d => sidepanel.helpData.directives[d].advanced ? "⚙️" : sidepanel.helpData.directives[d].icon
+    Object.keys(Help.directives),
+    d => Help.directives[d].advanced ? "⚙️" : Help.directives[d].icon
 );
 
 function renderPolicyCell(cell, pol) {

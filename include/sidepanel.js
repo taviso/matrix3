@@ -11,44 +11,6 @@ if (await chrome.tabs.getCurrent())
     document.body.classList.add("standalone");
 
 export let RulesManager = new Rules();
-export let helpData = { sources: [], directives: {}, sandbox: {} };
-
-try {
-    const [srcs, dirs, sbx] = await Promise.all([
-        fetch(chrome.runtime.getURL('help/sources.json')).then(r => r.json()),
-        fetch(chrome.runtime.getURL('help/directives.json')).then(r => r.json()),
-        fetch(chrome.runtime.getURL('help/sandbox.json')).then(r => r.json()),
-    ]);
-    helpData.sources = srcs.sources.map(h => ({ ...h, regex: new RegExp(h.regex) }));
-    helpData.directives = dirs.directives;
-    helpData.sandbox = sbx.sandbox;
-} catch (e) {
-    console.warn("sidepanel", "failed to load help data", e);
-}
-
-export function getSourceHelp(source)
-{
-    return helpData.sources.find(h => h.regex.test(source));
-}
-
-export function getRuleTooltip(source, directive)
-{
-    let sourceHelp = getSourceHelp(source);
-    let directiveHelp = helpData.directives[directive]?.description;
-    let title = "";
-
-    if (directiveHelp)
-        title += `${directive}: ${directiveHelp}`;
-    if (directiveHelp && sourceHelp)
-        title += `\n\n${sourceHelp.description}`;
-
-    return title;
-}
-
-export function isValidSource(source)
-{
-    return !!getSourceHelp(source);
-}
 
 const sidepanelPages = {
     "Report": "/panels/report.html",

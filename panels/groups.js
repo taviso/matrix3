@@ -1,5 +1,6 @@
 import * as utils from '/include/utils.js'
 import * as sidepanel from '/include/sidepanel.js'
+import Help from '/include/help.js'
 import Options from '/include/options.js'
 
 const groupsContainer = document.getElementById('groups');
@@ -8,7 +9,7 @@ const groupTemplate = document.getElementById('group-template');
 const groups = await Options.getGroups();
 
 function updateBoxTooltip(box, groupName, source, directive) {
-    let base = sidepanel.getRuleTooltip(source, directive);
+    let base = Help.getRuleTooltip(source, directive);
     if (groupName === "Ignore") {
         let state = box.checked ? "be IGNORED"
                   : (box.indeterminate || directive === "default-src") ? "be REPORTED"
@@ -137,7 +138,7 @@ async function addOrigin(group, input) {
 
     if (!origin)
         return;
-    if (!sidepanel.isValidSource(origin)) {
+    if (!Help.isValidSource(origin)) {
         input.setCustomValidity(input.title);
         input.reportValidity();
         return;

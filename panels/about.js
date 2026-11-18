@@ -1,4 +1,5 @@
 import * as sidepanel from '/include/sidepanel.js'
+import Help from '/include/help.js'
 import { MessageTypes } from '/include/commands.js'
 
 const RulesManager = sidepanel.RulesManager;
@@ -23,7 +24,7 @@ function fillTable(tbody, entries, formatLabel) {
         let row = tbody.insertRow();
         let cell = row.insertCell();
         cell.textContent = formatLabel ? formatLabel(name) : name;
-        cell.title = sidepanel.helpData.directives[name]?.description ?? name;
+        cell.title = Help.directives[name]?.description ?? name;
         row.insertCell().textContent = count;
     }
 }
@@ -54,7 +55,7 @@ function refreshStats() {
     fillTable(
         topDirectives,
         [...directives.entries()].sort((a, b) => b[1] - a[1]),
-        d => `${sidepanel.helpData.directives[d]?.icon ?? ""} ${d}`
+        d => `${Help.directives[d]?.icon ?? ""} ${d}`
     );
     fillTable(
         topSources,

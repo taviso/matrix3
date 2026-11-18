@@ -1,6 +1,7 @@
 import * as utils from '/include/utils.js'
 import * as sidepanel from '/include/sidepanel.js'
 import * as psl from '/include/psl.js'
+import Help from '/include/help.js'
 import Options from '/include/options.js'
 import Policy from '/include/policy.js'
 import { MessageTypes } from '/include/commands.js'
@@ -10,7 +11,7 @@ let groups = await Options.getGroups();
 
 // Attach tooltips to the static sandbox rows.
 document.querySelectorAll("td input.sandbox").forEach(box => {
-    box.closest("tr").title = sidepanel.helpData.sandbox[box.id] ?? "";
+    box.closest("tr").title = Help.sandbox[box.id] ?? "";
 });
 
 // Populate the source directive tables from the shared template.
@@ -290,7 +291,7 @@ function addSourceCheckboxRow(source, container = directivesTable.tBodies[0])
     row = document.createElement("tr");
     row.source = source;
     row.directives = Object.create(null);
-    if (sidepanel.getSourceHelp(source)?.advanced)
+    if (Help.getSourceHelp(source)?.advanced)
         row.classList.add("advanced");
     title = document.createElement("th");
 
@@ -305,7 +306,7 @@ function addSourceCheckboxRow(source, container = directivesTable.tBodies[0])
         box.checked = false;
         box.className = "rule";
         box.directive = cols[i];
-        box.title = sidepanel.getRuleTooltip(source, cols[i]);
+        box.title = Help.getRuleTooltip(source, cols[i]);
         row.directives[cols[i]] = box;
 
         if (colNodes[i].classList.contains("advanced"))
@@ -566,12 +567,12 @@ async function populateServerPolicy(tab) {
                 for (let src of srcs) {
                     if (src === "'none'" && !policy.isDirectiveDisabled(dir))
                         continue;
-                    let srchelp = sidepanel.getSourceHelp(src);
+                    let srchelp = Help.getSourceHelp(src);
                     if (!srchelp) {
                         // Strip path suffixes from server sources (e.g. "example.com/path/"
                         // or "https://example.com/path"); the server's own CSP still enforces the path.
                         src = src.split("/", src.includes("://") ? 3 : 1).join("/");
-                        srchelp = sidepanel.getSourceHelp(src);
+                        srchelp = Help.getSourceHelp(src);
                     }
                     if (!srchelp) {
                         console.debug("report", `ignoring invalid or unsupported server source ${src}`);
