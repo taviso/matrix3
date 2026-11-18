@@ -17,17 +17,48 @@ os.chdir(Path(__file__).resolve().parent)
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     current_csp = ''
+    current_headers = ''
     last_nav_cookie = ''
     last_subresource_cookie = ''
+
+    @staticmethod
+    def _clean_header(text):
+        return text.replace('\r', '').replace('\n', '').encode('utf-8').decode('latin-1')
+
+    @classmethod
+    def _parse_query_headers(cls, qs):
+        pairs = []
+        for name, val in zip(qs.get('hdr', []), qs.get('value', [])):
+            if name.strip():
+                pairs.append((cls._clean_header(name.strip()), cls._clean_header(val)))
+        for key, names in qs.items():
+            if key.startswith('hdr[') and key.endswith(']'):
+                idx = key[4:-1]
+                for name, val in zip(names, qs.get(f'value[{idx}]', [])):
+                    if name.strip():
+                        pairs.append((cls._clean_header(name.strip()), cls._clean_header(val)))
+        return pairs
+
+    @classmethod
+    def _parse_header_lines(cls, raw):
+        pairs = []
+        for line in raw.split('\n'):
+            if ':' in line:
+                name, val = line.split(':', 1)
+                if name.strip():
+                    pairs.append((cls._clean_header(name.strip()), cls._clean_header(val.strip())))
+        return pairs
 
     def do_GET(self):
         parsed = urllib.parse.urlsplit(self.path)
         if parsed.path == '/':
             qs = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
             csp = '\n'.join(qs['csp']) if 'csp' in qs else Handler.current_csp
-            return self._render(csp)
+            extra_headers = '\n'.join(qs['headers']) if 'headers' in qs else Handler.current_headers
+            return self._render(csp, extra_headers)
         elif parsed.path == '/reset':
             Handler.current_csp = ''
+            Handler.current_headers = ''
             self.send_response(HTTPStatus.SEE_OTHER)
             self.send_header('Location', '/')
             self.end_headers()
@@ -60,6 +91,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         if self.path == '/apply':
             Handler.current_csp = data.get('preset', data.get('csp', ['']))[0]
+            Handler.current_headers = data.get('headers', [''])[0]
             self.send_response(HTTPStatus.SEE_OTHER)
             self.send_header('Location', '/')
             self.end_headers()
@@ -99,19 +131,30 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _render(self, csp):
+    def _render(self, csp, extra_headers=''):
         Handler.last_nav_cookie = self.headers.get('Cookie', '')
-        body = Path('index.html').read_text().replace('{{csp}}', html.escape(csp)).encode('utf-8')
+        body = (
+            Path('index.html')
+            .read_text()
+            .replace('{{csp}}', html.escape(csp))
+            .replace('{{headers}}', html.escape(extra_headers))
+            .encode('utf-8')
+        )
         self.send_response(HTTPStatus.OK)
         lines = [line.strip() for line in csp.split('\n') if line.strip()]
         for line in (lines or ['']):
-            self.send_header('Content-Security-Policy', line.encode('utf-8').decode('latin-1'))
+            self.send_header('Content-Security-Policy', self._clean_header(line))
+        for name, val in self._parse_header_lines(extra_headers):
+            self.send_header(name, val)
         self.send_header('Content-Type', 'text/html')
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
     def end_headers(self):
+        qs = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query, keep_blank_values=True)
+        for name, val in self._parse_query_headers(qs):
+            self.send_header(name, val)
         self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
         self.send_header('Expires', '0')
         super().end_headers()

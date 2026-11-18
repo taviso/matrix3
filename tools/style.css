@@ -251,6 +251,7 @@ body {
   min-inline-size: 0;
 }
 
+.custom-input:not(.visible),
 #builder-custom:not(.visible) {
   display: none;
 }

@@ -164,6 +164,76 @@
       }
     });
 
+    // 0b. Extra Server Response Headers Builder
+    const headersTextarea = document.getElementById('headers');
+    const hdrNameSelect = document.getElementById('header-builder-name');
+    const hdrCustomName = document.getElementById('header-builder-custom-name');
+    const hdrValSelect = document.getElementById('header-builder-value');
+    const hdrCustomVal = document.getElementById('header-builder-custom-value');
+    const hdrAppendBtn = document.getElementById('header-builder-append-btn');
+
+    const kHeaderDefaults = {
+      'Allow-CSP-From': '*',
+      'X-Frame-Options': 'DENY',
+      'Link': '<https://www.google.com/jsapi>; rel=preload; as=script',
+      'Refresh': '0; url=javascript:alert(1)',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Resource-Policy': 'same-origin',
+      'Permissions-Policy': 'geolocation=(), microphone=(), camera=()',
+      'Referrer-Policy': 'no-referrer',
+      'Origin-Agent-Cluster': '?1',
+      'Clear-Site-Data': '"cache", "cookies", "storage"',
+      'Reporting-Endpoints': 'default="/report"',
+      'Report-To': '{"group":"default","max_age":3600,"endpoints":[{"url":"/report"}]}',
+      'Content-Security-Policy-Report-Only': "default-src 'none'; report-uri /report",
+    };
+
+    function syncHeaderBuilderState() {
+      const isOtherName = hdrNameSelect.value === '__other__';
+      hdrCustomName.classList.toggle('visible', isOtherName);
+      if (isOtherName && hdrValSelect.value !== '__other__') {
+        hdrValSelect.value = '__other__';
+      }
+      const isOtherVal = hdrValSelect.value === '__other__';
+      hdrCustomVal.classList.toggle('visible', isOtherVal);
+    }
+
+    hdrNameSelect.addEventListener('change', () => {
+      const def = kHeaderDefaults[hdrNameSelect.value];
+      if (def !== undefined) {
+        hdrValSelect.value = def;
+      } else {
+        hdrValSelect.value = '__other__';
+      }
+      syncHeaderBuilderState();
+      if (hdrNameSelect.value === '__other__') hdrCustomName.focus();
+    });
+
+    hdrValSelect.addEventListener('change', () => {
+      syncHeaderBuilderState();
+      if (hdrValSelect.value === '__other__') hdrCustomVal.focus();
+    });
+
+    function appendHeaderLine() {
+      const name = (hdrNameSelect.value === '__other__' ? hdrCustomName.value : hdrNameSelect.value).trim();
+      const val = (hdrValSelect.value === '__other__' ? hdrCustomVal.value : hdrValSelect.value).trim();
+      if (!name) return;
+      const line = `${name}: ${val}`;
+      const existing = headersTextarea.value.trim();
+      headersTextarea.value = existing ? `${existing}\n${line}` : line;
+    }
+
+    hdrAppendBtn.addEventListener('click', appendHeaderLine);
+    for (const input of [hdrCustomName, hdrCustomVal]) {
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          appendHeaderLine();
+        }
+      });
+    }
+
     // 1. Authorized inline script (this script itself)
     setStatus('inline-auth', 'allowed', 'Allowed', 'Executed <script nonce="test-nonce"> (matches sha256 preset)');
 
@@ -831,12 +901,91 @@
       </div>
 
       <label for="csp">
-        <span>Active HTTP Header Value</span>
+        <span>Active <code>Content-Security-Policy</code> Header Value</span>
       </label>
       <textarea id="csp" name="csp" rows="3" cols="80" placeholder="No server Content-Security-Policy header set (empty). Use the Policy Builder above or type a policy directly..." autofocus>{{csp}}</textarea>
+
+      <div class="policy-builder" role="group" aria-label="Extra response header builder">
+        <span class="policy-builder-label">Header Builder:</span>
+        <select id="header-builder-name" aria-label="Header name">
+          <optgroup label="CSP &amp; Framing Headers">
+            <option value="Allow-CSP-From" selected>Allow-CSP-From</option>
+            <option value="X-Frame-Options">X-Frame-Options</option>
+            <option value="Content-Security-Policy-Report-Only">Content-Security-Policy-Report-Only (stripped by matrix³)</option>
+          </optgroup>
+          <optgroup label="Preloading &amp; Navigation Headers">
+            <option value="Link">Link (preload / modulepreload)</option>
+            <option value="Refresh">Refresh</option>
+            <option value="Clear-Site-Data">Clear-Site-Data</option>
+          </optgroup>
+          <optgroup label="Isolation &amp; Policy Headers">
+            <option value="Cross-Origin-Embedder-Policy">Cross-Origin-Embedder-Policy (COEP)</option>
+            <option value="Cross-Origin-Opener-Policy">Cross-Origin-Opener-Policy (COOP)</option>
+            <option value="Cross-Origin-Resource-Policy">Cross-Origin-Resource-Policy (CORP)</option>
+            <option value="Origin-Agent-Cluster">Origin-Agent-Cluster</option>
+            <option value="Permissions-Policy">Permissions-Policy</option>
+            <option value="Referrer-Policy">Referrer-Policy</option>
+          </optgroup>
+          <optgroup label="Telemetry Headers (stripped by matrix³)">
+            <option value="Reporting-Endpoints">Reporting-Endpoints</option>
+            <option value="Report-To">Report-To</option>
+          </optgroup>
+          <optgroup label="Custom">
+            <option value="__other__">Other (custom)…</option>
+          </optgroup>
+        </select>
+
+        <input id="header-builder-custom-name" class="custom-input" type="text" placeholder="e.g. X-Custom-Header">
+
+        <select id="header-builder-value" aria-label="Header value">
+          <optgroup label="Allow-CSP-From">
+            <option value="*" selected>* (allow required CSP from any origin)</option>
+            <option value="http://127.0.0.1:8123">http://127.0.0.1:8123</option>
+          </optgroup>
+          <optgroup label="X-Frame-Options">
+            <option value="DENY">DENY</option>
+            <option value="SAMEORIGIN">SAMEORIGIN</option>
+          </optgroup>
+          <optgroup label="Link (Preload / Modulepreload)">
+            <option value="&lt;https://www.google.com/jsapi&gt;; rel=preload; as=script">&lt;https://www.google.com/jsapi&gt;; rel=preload; as=script</option>
+            <option value="&lt;https://cdn.jsdelivr.net/npm/d3/+esm&gt;; rel=modulepreload">&lt;https://cdn.jsdelivr.net/npm/d3/+esm&gt;; rel=modulepreload</option>
+            <option value="&lt;https://api.github.com/&gt;; rel=preload; as=fetch; crossorigin">&lt;https://api.github.com/&gt;; rel=preload; as=fetch; crossorigin</option>
+          </optgroup>
+          <optgroup label="Refresh">
+            <option value="0; url=javascript:alert(1)">0; url=javascript:alert(1) (refused by browser)</option>
+            <option value="5; url=/">5; url=/</option>
+          </optgroup>
+          <optgroup label="Isolation &amp; Policy Values">
+            <option value="require-corp">require-corp (COEP)</option>
+            <option value="credentialless">credentialless (COEP)</option>
+            <option value="same-origin">same-origin (COOP / CORP)</option>
+            <option value="cross-origin">cross-origin (CORP)</option>
+            <option value="?1">?1 (Origin-Agent-Cluster)</option>
+            <option value="geolocation=(), microphone=(), camera=()">geolocation=(), microphone=(), camera=()</option>
+            <option value="no-referrer">no-referrer</option>
+            <option value="&quot;cache&quot;, &quot;cookies&quot;, &quot;storage&quot;">"cache", "cookies", "storage"</option>
+          </optgroup>
+          <optgroup label="Telemetry / Report-Only Values">
+            <option value="default=&quot;/report&quot;">default="/report"</option>
+            <option value="{&quot;group&quot;:&quot;default&quot;,&quot;max_age&quot;:3600,&quot;endpoints&quot;:[{&quot;url&quot;:&quot;/report&quot;}]}">{"group":"default","max_age":3600,"endpoints":[{"url":"/report"}]}</option>
+            <option value="default-src 'none'; report-uri /report">default-src 'none'; report-uri /report</option>
+          </optgroup>
+          <optgroup label="Custom">
+            <option value="__other__">Other (custom)…</option>
+          </optgroup>
+        </select>
+
+        <input id="header-builder-custom-value" class="custom-input" type="text" placeholder="Header value…">
+        <button id="header-builder-append-btn" type="button">Append</button>
+      </div>
+
+      <label for="headers">
+        <span>Extra HTTP Response Headers (<code>Header-Name: value</code>, or via <code>?hdr=Name&amp;value=Val</code> / <code>?hdr[1]=Name&amp;value[1]=Val</code>)</span>
+      </label>
+      <textarea id="headers" name="headers" rows="2" cols="80" placeholder="No extra response headers set. Use the Header Builder above or type Header-Name: value (one per line)...">{{headers}}</textarea>
       <div class="button-bar">
-        <button type="submit" class="primary">Apply Header</button>
-        <a href="/reset" class="btn">Clear Header</a>
+        <button type="submit" class="primary">Apply Headers</button>
+        <a href="/reset" class="btn">Clear Headers</a>
       </div>
     </form>
   </section>
