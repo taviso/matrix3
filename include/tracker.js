@@ -156,8 +156,12 @@ export default class ViolationTracker {
             // branch below is a no-op.
             const u = new URL(blocked);
             const scoped = await psl.getScopedDomain(u.hostname);
+            if (!scoped) {
+                console.warn("tracker", "rejecting blocked origin with invalid hostname", u.hostname);
+                return false;
+            }
             let hostpart = scoped;
-            if (u.hostname != scoped)
+            if (psl.getHostname(u.hostname) != scoped)
                 hostpart = `*.${scoped}`;
             if (u.port)
                 hostpart += `:${u.port}`;
@@ -167,6 +171,8 @@ export default class ViolationTracker {
         // Bucket by the document's scope so the panel can find it with the
         // same key it puts in the dropdown.
         let domain = await psl.getScopedDomain(docUrl.hostname);
+        if (!domain)
+            return false;
         let groups = await Options.getGroups();
 
         // Drop if the tab or its violations were reset while we were awaiting.
@@ -297,6 +303,8 @@ export default class ViolationTracker {
         let tab = this.#getOrCreateTab(tabId);
         let server = tab.server;
         let domain = await psl.getScopedDomain(new URL(url).hostname);
+        if (!domain)
+            return;
         if (this.#tabs.get(tabId) !== tab || tab.server !== server)
             return;
 
@@ -338,6 +346,8 @@ export default class ViolationTracker {
         await this.#state;
         let u = URL.parse(url);
         if (u?.protocol !== "http:" && u?.protocol !== "https:")
+            return false;
+        if (!psl.getHostname(u.hostname))
             return false;
         if (this.#workers.has(u.origin))
             return false;

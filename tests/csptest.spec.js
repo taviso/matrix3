@@ -1753,4 +1753,87 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
         const escapedFrames = testbench.frames().filter((f) => f.url().includes('meta_refresh_escaped=1'));
         expect(escapedFrames).toHaveLength(0);
     });
+
+    test('nonsense hostnames with CSP delimiters (;, ", \', ,), IPv6 literals, trailing-dot FQDNs, and IDNs are validated via psl/tldts', async ({
+        serviceWorker,
+        testbench,
+        openPanel,
+    }) => {
+        await setDefaultPolicy(serviceWorker, 1); // First Party (blocks cross-origin script-src and connect-src)
+        await testbench.goto('http://127.0.0.1:8123/reset');
+
+        // 1. Send Link: <https://testing.";script-src'self';".com/x.js>; rel=preload; as=script via Header Builder
+        await testbench.locator('#header-builder-name').selectOption('Link');
+        await testbench.locator('#header-builder-value').selectOption('__other__');
+        await testbench
+            .locator('#header-builder-custom-value')
+            .fill('<https://testing.";script-src\'self\';".com/x.js>; rel=preload; as=script');
+        await testbench.locator('#header-builder-append-btn').click();
+        await testbench.locator('form.csp-form button[type="submit"]').click();
+
+        // 2. Trigger subresource loads with ';', '"', '%22', "'", ',', IPv6 [::1], trailing-dot FQDNs, and IDN
+        await testbench.evaluate(() => {
+            for (const url of [
+                'https://testing.";script-src\'self\';".com/a.js',
+                'https://testing.%22;script-src\'self\';%22.com/b.js',
+                'https://testing.;sandbox;.com/c.js',
+                'https://testing.,default-src.com/d.js',
+                'http://[::1]:8123/ipv6.js',
+                'https://example.com./fqdn-apex.js',
+                'https://münchen.de/idn.js',
+            ]) {
+                fetch(url).catch(() => {});
+            }
+        });
+
+        const report = await openPanel('report');
+        // Trailing-dot apex `https://example.com./` must normalize to `https://example.com` (NOT `https://*.example.com`),
+        // and IDN `https://münchen.de/` normalizes to punycode `https://xn--mnchen-3ya.de`.
+        await expect(await getSourceCheckbox(report, 'https://example.com', 'connect-src').locator()).toHaveClass(/violation/);
+        await expect(await getSourceCheckbox(report, 'https://xn--mnchen-3ya.de', 'connect-src').locator()).toHaveClass(/violation/);
+
+        // None of the nonsense hostnames with ';', '"', "'", ',', or IPv6 '[::1]' / '::1' may appear in the Report panel
+        const rowTitles = await report
+            .locator('table#sources tbody tr th')
+            .evaluateAll((ths) => ths.map((th) => th.title));
+        expect(rowTitles.filter((t) => t.includes('testing.') || t.includes('::1'))).toEqual([]);
+        expect(rowTitles).not.toContain('https://*.example.com');
+
+        // 3. Direct unit check on psl.getHostname / getRegistrableDomain / getScopedDomain edge cases
+        const pslChecks = await report.evaluate(async () => {
+            const psl = await import('/include/psl.js');
+            return {
+                fqdnApexDomain: await psl.getScopedDomain('example.com.'),
+                fqdnApexHost: psl.getHostname('example.com.'),
+                fqdnSubDomain: await psl.getScopedDomain('sub.example.com.'),
+                fqdnSubHost: psl.getHostname('sub.example.com.'),
+                ipv4: await psl.getScopedDomain('127.0.0.1'),
+                localhost: await psl.getScopedDomain('localhost'),
+                ipv6Bracketed: await psl.getScopedDomain('[::1]'),
+                ipv6Bare: await psl.getScopedDomain('::1'),
+                semicolonHost: await psl.getScopedDomain('testing.";script-src\'self\';".com'),
+                commaHost: await psl.getScopedDomain('testing.,default-src.com'),
+                rtlHost: await psl.getScopedDomain('ex\u202eample.com'),
+                leadingHyphen: await psl.getScopedDomain('-leading.com'),
+                trailingHyphen: await psl.getScopedDomain('trailing-.com'),
+                emptyLabel: await psl.getScopedDomain('empty..label.com'),
+            };
+        });
+        expect(pslChecks).toEqual({
+            fqdnApexDomain: 'example.com',
+            fqdnApexHost: 'example.com',
+            fqdnSubDomain: 'example.com',
+            fqdnSubHost: 'sub.example.com',
+            ipv4: '127.0.0.1',
+            localhost: 'localhost',
+            ipv6Bracketed: null,
+            ipv6Bare: null,
+            semicolonHost: null,
+            commaHost: null,
+            rtlHost: null,
+            leadingHyphen: null,
+            trailingHyphen: null,
+            emptyLabel: null,
+        });
+    });
 });
