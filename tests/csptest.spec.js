@@ -1837,3 +1837,150 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
         });
     });
 });
+
+test.describe('Deep-Dive Edge Cases & Regression Checks', () => {
+    test('1. subframe with an invalid hostname does not create a "null" origin button in div#frames', async ({
+        serviceWorker,
+        testbench,
+        openPanel,
+    }) => {
+        await setDefaultPolicy(serviceWorker, 0); // Permissive so cross-origin subframes can navigate
+        await testbench.goto('http://127.0.0.1:8123/reset');
+
+        await testbench.evaluate(async () => {
+            await new Promise((resolve) => {
+                const ifr = document.createElement('iframe');
+                ifr.onload = ifr.onerror = resolve;
+                ifr.src = 'https://testing.";script-src;".com/';
+                document.body.appendChild(ifr);
+            });
+        });
+
+        const report = await openPanel('report');
+        const frameButtons = await report
+            .locator('div#frames button[data-value]')
+            .evaluateAll((btns) => btns.map((b) => b.dataset.value));
+        expect(frameButtons).toEqual(['127.0.0.1', 'example.com']);
+        expect(frameButtons).not.toContain('null');
+    });
+
+    test('2. server script-src-attr \'none\' / style-src-attr \'none\' does not check \'none\' in script-src / style-src or disable scripts/styles on Merge', async ({
+        serviceWorker,
+        testbench,
+        openPanel,
+    }) => {
+        await setDefaultPolicy(serviceWorker, 1);
+        await testbench.goto('http://127.0.0.1:8123/reset');
+
+        await testbench
+            .locator('#csp')
+            .fill(
+                "script-src 'self' https://cdn.jsdelivr.net; script-src-attr 'none'; style-src-attr 'none'; fake-attr https://evil.example.com; img-src-attr https://evil2.example.com"
+            );
+        await testbench.locator('form.csp-form button[type="submit"]').click();
+
+        const report = await openPanel('report');
+        const details = report.locator('div#serverpolicy details');
+        await expect(details).toBeVisible();
+        await details.locator('summary').click();
+
+        // In #serversources, 'self' and 'https://cdn.jsdelivr.net' are checked in script-src,
+        // 'none' must NOT be checked in script-src or style-src, and fake-attr / img-src-attr
+        // must not populate any source rows in #serversources.
+        await expect(await getSourceCheckbox(report, "'self'", 'script-src', 'table#serversources').locator()).toBeChecked();
+        await expect(
+            await getSourceCheckbox(report, 'https://cdn.jsdelivr.net', 'script-src', 'table#serversources').locator()
+        ).toBeChecked();
+        const serverScriptNone = report.locator('table#serversources tbody tr th[title="\'none\'"]');
+        await expect(serverScriptNone).toHaveCount(0);
+        await expect(report.locator('table#serversources tbody tr th[title*="evil"]')).toHaveCount(0);
+
+        // Clicking Merge must keep 'self' and 'https:' checked in style-src (not wipe them out with 'none'!)
+        await report.locator('button#merge').click();
+        await waitForPanelIdle(report);
+        await expect(await getSourceCheckbox(report, "'self'", 'style-src').locator()).toBeChecked();
+        await expect(await getSourceCheckbox(report, 'https:', 'style-src').locator()).toBeChecked();
+        await expect(await getSourceCheckbox(report, "'none'", 'style-src').locator()).not.toBeChecked();
+
+        await report.locator('button#abandon').click();
+        await waitForPanelIdle(report);
+    });
+
+    test('3. cross-origin frame-src / object-src redirects (origin-sanitized blocked-uri) and #fragment redirect chains resolve to the final target', async ({
+        openPanel,
+    }) => {
+        const panel = await openPanel('options');
+        const redirectResult = await panel.evaluate(async () => {
+            const { default: ViolationTracker } = await import('/include/tracker.js');
+            const vt = new ViolationTracker();
+            await vt.resetViolations(9997);
+            await vt.addDocument(9997, 'doc-0', 'https://app.example.com/');
+
+            // Hop 1 -> Hop 2 (with a #fragment on Location) -> Final Target
+            await vt.addRedirect(9997, 'https://allowed-sso.example.com/login?next=1', 'https://hop2.example.net/auth#frag');
+            await vt.addRedirect(9997, 'https://hop2.example.net/auth', 'https://final-idp.example.org/saml');
+
+            // Chromium's RenderFrameHostCSPContext::SanitizeDataForUseInCspViolation strips cross-origin
+            // frame-src blocked-uri (url_before_redirects) down to its origin ("https://allowed-sso.example.com/").
+            await vt.addTabViolation(9997, {
+                report: { 'document-uri': 'https://app.example.com/' },
+                directive: 'frame-src',
+                blocked: new URL('https://allowed-sso.example.com/'),
+                documentId: 'doc-0',
+            });
+
+            const dirs = await vt.getDirectives(9997, 'example.com');
+            await vt.resetTab(9997);
+            return dirs['frame-src'] ?? [];
+        });
+
+        expect(redirectResult).toEqual(['https://*.example.org']);
+    });
+
+    test('4. <fencedframe> violations (effective-directive: "fenced-frame-src") collapse to frame-src', async ({
+        openPanel,
+    }) => {
+        const panel = await openPanel('options');
+        const collapsed = await panel.evaluate(async () => {
+            const { default: Policy } = await import('/include/policy.js');
+            return Policy.collapseDirective('fenced-frame-src');
+        });
+        expect(collapsed).toBe('frame-src');
+    });
+
+    test('5. uppercase hostnames in Server CSP headers are normalized to lowercase so Accept/Merge does not create duplicate rows', async ({
+        serviceWorker,
+        testbench,
+        openPanel,
+    }) => {
+        await setDefaultPolicy(serviceWorker, 1);
+        await testbench.goto('http://127.0.0.1:8123/reset');
+
+        await testbench.locator('#csp').fill("script-src 'self' https://CDN.JSDelivr.NET/npm/d3/+esm");
+        await testbench.locator('form.csp-form button[type="submit"]').click();
+
+        const report = await openPanel('report');
+        const details = report.locator('div#serverpolicy details');
+        await expect(details).toBeVisible();
+        await details.locator('summary').click();
+
+        await expect(
+            await getSourceCheckbox(report, 'https://cdn.jsdelivr.net', 'script-src', 'table#serversources').locator()
+        ).toBeChecked();
+        await expect(report.locator('table#serversources tbody tr th[title="https://CDN.JSDelivr.NET"]')).toHaveCount(0);
+    });
+
+    test('6. Policy.sanitizeForAppend() strips invalid source tokens and fake-attr directives', async ({ openPanel }) => {
+        const panel = await openPanel('options');
+        const sanitized = await panel.evaluate(async () => {
+            const { default: Policy } = await import('/include/policy.js');
+            return new Policy(
+                "script-src 'self' 'bogus-token' https://bad\"host.com https://cdn.jsdelivr.net; img-src 'self' data: ???; fake-attr 'self'; img-src-attr 'self'"
+            )
+                .sanitizeForAppend()
+                .toHeader()
+                .trim();
+        });
+        expect(sanitized).toBe("script-src 'self' https://cdn.jsdelivr.net; img-src 'self' data:;");
+    });
+});

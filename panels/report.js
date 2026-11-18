@@ -506,6 +506,8 @@ async function populateOriginList(preferredDomain, tab) {
         let domain = utils.isProtectedOrigin(u)
             ? u.hostname
             : await psl.getScopedDomain(u.hostname);
+        if (!domain)
+            continue;
         if (!domains.has(domain))
             domains.set(domain, u.origin);
         if (f.frameId === 0)
@@ -562,15 +564,21 @@ async function populateServerPolicy(tab) {
                 if (srcs.length === 0)
                     srcs = ["'none'"];
                 for (let src of srcs) {
-                    if (!sidepanel.isValidSource(src)) {
+                    if (src === "'none'" && !policy.isDirectiveDisabled(dir))
+                        continue;
+                    let srchelp = sidepanel.getSourceHelp(src);
+                    if (!srchelp) {
                         // Strip path suffixes from server sources (e.g. "example.com/path/"
                         // or "https://example.com/path"); the server's own CSP still enforces the path.
                         src = src.split("/", src.includes("://") ? 3 : 1).join("/");
+                        srchelp = sidepanel.getSourceHelp(src);
                     }
-                    if (!sidepanel.isValidSource(src)) {
+                    if (!srchelp) {
                         console.debug("report", `ignoring invalid or unsupported server source ${src}`);
                         continue;
                     }
+                    if (srchelp.name === "URL" || srchelp.name === "Host")
+                        src = src.toLowerCase();
                     setSourceCheckboxState(src, dir, true, undefined, serverFragment);
                 }
             } else {

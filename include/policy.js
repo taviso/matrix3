@@ -1,4 +1,7 @@
 // This class is just a simple representation of a csp policy.
+import sourcesData from '/help/sources.json' with { type: 'json' };
+
+const kSourceMatchers = sourcesData.sources.map(h => new RegExp(h.regex));
 
 // Directives managed by matrix³; any other directives (e.g. legacy passthrough
 // directives like block-all-mixed-content, frame-ancestors, or trusted-types)
@@ -39,15 +42,21 @@ export default class Policy {
         return typeof src === "string" && (kNoncePrefix.test(src) || src === "'strict-dynamic'");
     }
 
+    static isValidSource(src) {
+        return typeof src === "string" && kSourceMatchers.some(re => re.test(src));
+    }
+
     // Transform a source token for matrix³'s own appended policy. Nonces,
     // hashes, and 'strict-dynamic' cannot be emitted in matrix³'s policy
     // (they would suppress 'unsafe-inline' or host sources) and map to
     // 'unsafe-inline' while the server's policy enforces the actual nonce/hash.
     static importableSource(src) {
-        if (!src)
+        if (!src || typeof src !== "string")
             return null;
         if (Policy.isNonceOrHash(src) || src === "'strict-dynamic'")
             return "'unsafe-inline'";
+        if (!Policy.isValidSource(src))
+            return null;
         return src;
     }
 
@@ -59,6 +68,8 @@ export default class Policy {
             case "style-src-elem":
             case "style-src-attr":
                 return "style-src";
+            case "fenced-frame-src":
+                return "frame-src";
         }
         return directive;
     }

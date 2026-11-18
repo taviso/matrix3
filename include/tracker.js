@@ -120,6 +120,18 @@ export default class ViolationTracker {
         // blocked-uri in the report is the pre-redirect URL; follow any
         // redirects recorded by onBeforeRedirect (up to Fetch's 20-redirect
         // limit, net::URLRequest::kMaxRedirects) to find the blocked target.
+        let dir = Policy.collapseDirective(report.directive);
+
+        // For cross-origin frame-src and object-src violations, Chromium
+        // strips blocked-uri to the pre-redirect origin ("https://host/").
+        if (!tab.redirects.has(blockedUrl?.href) && blockedUrl?.href === `${blockedUrl?.origin}/`) {
+            if (dir === "frame-src" || dir === "object-src" || dir === "child-src") {
+                for (let [from, to] of tab.redirects) {
+                    if (URL.parse(from)?.origin === blockedUrl.origin)
+                        blockedUrl = URL.parse(to);
+                }
+            }
+        }
         for (let i = 0; i < 20 && tab.redirects.has(blockedUrl?.href); i++)
             blockedUrl = URL.parse(tab.redirects.get(blockedUrl.href));
 
@@ -201,7 +213,6 @@ export default class ViolationTracker {
         // Caller uses our return value to decide whether to badge and notify;
         // ignored origins are recorded silently.
         let ignored = groups?.Ignore?.[blocked];
-        let dir = Policy.collapseDirective(report.directive);
         if (ignored?.includes(`!${dir}`))
             return true;
         if (ignored?.includes("default-src") || ignored?.includes(dir))
@@ -237,12 +248,21 @@ export default class ViolationTracker {
 
     async addRedirect(tabId, fromUrl, toUrl) {
         await this.#state;
-        if (tabId === -1 || !fromUrl || !toUrl)
+        let from = URL.parse(fromUrl);
+        let to = URL.parse(toUrl);
+        if (tabId === -1 || !from || !to)
             return;
+
+        // HTTP requests and Blink's CSPStripURL never include URL #fragments,
+        // but a redirect's Location header (details.redirectUrl) can. Strip
+        // any #fragment so multi-hop redirect lookups match the next hop's URL.
+        from.hash = "";
+        to.hash = "";
+
         let redirects = this.#getOrCreateTab(tabId).redirects;
         if (redirects.size >= kMaxRedirects)
             redirects.delete(redirects.keys().next().value);
-        redirects.set(fromUrl, toUrl);
+        redirects.set(from.href, to.href);
     }
 
     async resetServerPolicy(tabId) {
