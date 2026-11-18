@@ -1,10 +1,5 @@
 // This class is just a simple representation of a csp policy.
 
-// The default blank policy you get from new Policy()
-const kDefaultPolicy = {
-    "report-uri": [ "wss://_matrix3.internal/csp-report" ],
-};
-
 // Directives managed by matrix³; any other directives (e.g. legacy passthrough
 // directives like block-all-mixed-content, frame-ancestors, or trusted-types)
 // are left to the server's own CSP header and stripped from appended rules.
@@ -30,8 +25,11 @@ const kNonceOrHashPrefix = /^'(?:nonce-|sha(?:256|384|512)-)/i;
 const kNoncePrefix = /^'nonce-/i;
 
 export default class Policy {
-    // Default directives -- override per instance as needed.
-    directives = structuredClone(kDefaultPolicy);
+    directives;
+
+    constructor(headerString = "") {
+        this.fromHeader(headerString);
+    }
 
     static isNonceOrHash(src) {
         return typeof src === "string" && kNonceOrHashPrefix.test(src);

@@ -695,15 +695,18 @@ test.describe('Extension Panels, Buttons, and Options', () => {
             const { RulesManager } = await import('/include/sidepanel.js');
             return RulesManager.getRules().map((r) => `${r.isSession ? 'session' : 'dynamic'}:${r.host}`).sort();
         });
-        const liveHosts = () => serviceWorker.evaluate(async () => {
+        const liveRules = () => serviceWorker.evaluate(async () => {
             const [session, dynamic] = await Promise.all([
                 chrome.declarativeNetRequest.getSessionRules(),
                 chrome.declarativeNetRequest.getDynamicRules(),
             ]);
-            const hosts = (rules, kind) => rules
+            const summarize = (rules, kind) => rules
                 .filter((r) => r.action.type === 'modifyHeaders' && r.condition.urlFilter)
-                .map((r) => `${kind}:${r.condition.urlFilter.slice(2, -1)}`);
-            return [...hosts(session, 'session'), ...hosts(dynamic, 'dynamic')].sort();
+                .map((r) => [
+                    `${kind}:${r.condition.urlFilter.slice(2, -1)}`,
+                    r.action.responseHeaders[0].value,
+                ]);
+            return Object.fromEntries([...summarize(session, 'session'), ...summarize(dynamic, 'dynamic')]);
         });
 
         // Seed a session rule for c.test and wait until every panel's mirror has picked it up.
@@ -738,7 +741,11 @@ test.describe('Extension Panels, Buttons, and Options', () => {
         expect(results).toEqual(['ok', 'ok', 'ok']);
 
         const expected = ['dynamic:c.test', 'session:a.test', 'session:b.test'];
-        expect(await liveHosts()).toEqual(expected);
+        const live = await liveRules();
+        expect(Object.keys(live).sort()).toEqual(expected);
+        expect(live['dynamic:c.test']).toContain("img-src 'self'");
+        expect(live['session:a.test']).toContain("script-src 'self'");
+        expect(live['session:b.test']).toContain("script-src 'self'");
 
         // Every panel's mirror must converge on the live dNR state.
         for (const page of panels) {
@@ -1255,17 +1262,21 @@ test.describe('Extension Panels, Buttons, and Options', () => {
 
             await RulesManager.pullFromCloud();
 
-            const finalRules = RulesManager.getRules()
-                .filter((r) => !r.isSession)
-                .map((r) => r.host)
-                .sort();
+            const finalRules = Object.fromEntries(
+                RulesManager.getRules()
+                    .filter((r) => !r.isSession)
+                    .map((r) => [r.host, r.policy.toHeader()])
+            );
             const finalTeam = structuredClone((await Options.getGroups()).Team);
             return { finalRules, finalTeam };
         });
 
         // a.example.com was in synced baseline and deleted remotely -> removed
         // b.example.com was kept, c.example.com was pulled from cloud, d.example.com was local-only (not in synced) -> preserved!
-        expect(syncResult.finalRules).toEqual(['b.example.com', 'c.example.com', 'd.example.com']);
+        expect(Object.keys(syncResult.finalRules).sort()).toEqual(['b.example.com', 'c.example.com', 'd.example.com']);
+        expect(syncResult.finalRules['b.example.com']).toContain("script-src 'self'");
+        expect(syncResult.finalRules['c.example.com']).toContain("style-src 'self'");
+        expect(syncResult.finalRules['d.example.com']).toContain("img-src 'self'");
         // In group Team:
         // - origin1 deleted locally -> removed
         // - origin2 modified remotely while unchanged locally -> updated to ['connect-src', 'img-src']

@@ -89,8 +89,7 @@ class Rule {
     }
 
     toPolicy() {
-        let csp = new Policy();
-        return csp.fromHeader(this.action.responseHeaders[0].value);
+        return new Policy(this.action.responseHeaders[0].value);
     }
 
     fromPolicy(policy) {
@@ -98,7 +97,7 @@ class Rule {
     }
 
     fromPolicyString(headerString) {
-        this.fromPolicy(new Policy().fromHeader(headerString).sanitizeForAppend());
+        this.fromPolicy(new Policy(headerString).sanitizeForAppend());
     }
 
     toRule() {

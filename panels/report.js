@@ -551,9 +551,7 @@ async function populateServerPolicy(tab) {
         }
     }).catch(() => []);
 
-    currentServerPolicies = headers.map(h => new Policy().fromHeader(h));
-
-    passthru.directives = Object.create(null);
+    currentServerPolicies = headers.map(h => new Policy(h));
 
     for (let policy of currentServerPolicies) {
         for (let [directive, srcs] of Object.entries(policy.directives)) {
