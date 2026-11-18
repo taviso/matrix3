@@ -1230,4 +1230,527 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
         await waitForPanelIdle(report);
         await context.clearCookies();
     });
+
+    test('<iframe> csp and sandbox attributes: additive intersection, CSPEE subsumption, and inability to weaken or bypass matrix³ CSP', async ({
+        serviceWorker,
+        testbench,
+        openPanel,
+    }) => {
+        // 1. <iframe csp="..."> under Mode 1 (First Party):
+        //    Chromium's CheckCSPEmbeddedEnforcement has two enforcement paths for <iframe csp="...">:
+        //    (A) Blanket enforcement (local schemes like srcdoc/blob:, OR network responses with `Allow-CSP-From: *`):
+        //        Chromium adds `required_csp` to the subframe's PolicyContainer alongside matrix³'s response CSP.
+        //        - A permissive `csp="default-src * 'unsafe-inline' 'unsafe-eval'"` cannot weaken matrix³'s `connect-src 'self'`.
+        //        - A restrictive `csp="script-src 'none'"` or `csp="connect-src 'none'"` tightens the iframe additively.
+        //    (B) Subsumption (`network::Subsumes`, when `Allow-CSP-From` is absent on network responses):
+        //        - A permissive `csp="default-src * data: blob: 'unsafe-inline' 'unsafe-eval'"` subsumes matrix³'s First Party
+        //          policy (ignoring matrix³'s appended `report-uri`), loads the frame, and still enforces matrix³'s `connect-src 'self'`.
+        //        - A restrictive `csp="script-src 'none'"` that is not satisfied by the response's CSP fails subsumption
+        //          and blocks the iframe response outright (`contentDocument === null`).
+        await setDefaultPolicy(serviceWorker, 1);
+        await testbench.goto('http://127.0.0.1:8123/reset');
+
+        const mode1IframeCsp = await testbench.evaluate(async () => {
+            // (a) Blanket enforcement (`Allow-CSP-From: *`) + permissive csp attribute trying to allow cross-origin connect-src *
+            const allowCspFromBypassAttempt = await new Promise((resolve) => {
+                const ifr = document.createElement('iframe');
+                ifr.csp = "default-src * 'unsafe-inline' 'unsafe-eval'";
+                const onMsg = (e) => {
+                    if (e.source === ifr.contentWindow && e.data?.type === 'matrix3-frame' && 'fetch' in e.data) {
+                        window.removeEventListener('message', onMsg);
+                        resolve({
+                            fetch: e.data.fetch,
+                            scriptBadge: ifr.contentDocument?.getElementById('frame-script')?.textContent,
+                        });
+                    }
+                };
+                window.addEventListener('message', onMsg);
+                ifr.src = `/frame.html?hdr=Allow-CSP-From&value=*&fetch=1&t=${Date.now()}`;
+                document.body.appendChild(ifr);
+            });
+
+            // (b) Subsumption (no `Allow-CSP-From`) + permissive csp that subsumes First Party (including data: blob:)
+            //     verifies matrix³'s appended `report-uri wss://_matrix3.internal/csp-report` does not break CSPEE subsumption,
+            //     and matrix³'s `connect-src 'self'` is still enforced inside the frame.
+            const subsumedBypassAttempt = await new Promise((resolve) => {
+                const ifr = document.createElement('iframe');
+                ifr.csp = "default-src * data: blob: 'unsafe-inline' 'unsafe-eval'";
+                const onMsg = (e) => {
+                    if (e.source === ifr.contentWindow && e.data?.type === 'matrix3-frame' && 'fetch' in e.data) {
+                        window.removeEventListener('message', onMsg);
+                        resolve({
+                            fetch: e.data.fetch,
+                            scriptBadge: ifr.contentDocument?.getElementById('frame-script')?.textContent,
+                        });
+                    }
+                };
+                window.addEventListener('message', onMsg);
+                ifr.src = `/frame.html?fetch=1&t=${Date.now()}`;
+                document.body.appendChild(ifr);
+            });
+
+            // (c) Local-scheme (`srcdoc`) + permissive csp attribute trying to allow cross-origin fetch
+            const srcdocBypassAttempt = await new Promise((resolve) => {
+                const ifr = document.createElement('iframe');
+                ifr.csp = "default-src * 'unsafe-inline' 'unsafe-eval'";
+                const onMsg = (e) => {
+                    if (e.source === ifr.contentWindow && e.data?.type === 'iframe-csp-srcdoc') {
+                        window.removeEventListener('message', onMsg);
+                        resolve(e.data.status);
+                    }
+                };
+                window.addEventListener('message', onMsg);
+                ifr.srcdoc = `<script>
+                    fetch('https://untrusted.example.com/')
+                        .then(() => parent.postMessage({ type: 'iframe-csp-srcdoc', status: 'allowed' }, '*'))
+                        .catch(() => parent.postMessage({ type: 'iframe-csp-srcdoc', status: 'blocked' }, '*'));
+                <\/script>`;
+                document.body.appendChild(ifr);
+            });
+
+            // (d) Blanket enforcement (`Allow-CSP-From: *`) + restrictive csp="script-src 'none'" on /frame.html
+            //     loads the HTML document and additively blocks its inline script (#frame-script stays "script: blocked").
+            const restrictiveScriptNoneWithOptIn = await new Promise((resolve) => {
+                const ifr = document.createElement('iframe');
+                ifr.csp = "script-src 'none'";
+                ifr.onload = () => {
+                    resolve(ifr.contentDocument?.getElementById('frame-script')?.textContent);
+                };
+                ifr.src = `/frame.html?hdr=Allow-CSP-From&value=*&t=${Date.now()}`;
+                document.body.appendChild(ifr);
+            });
+
+            // (e) Subsumption failure (no `Allow-CSP-From`) + restrictive csp="script-src 'none'" on /frame.html:
+            //     because First Party allows `script-src 'self' 'unsafe-inline' 'unsafe-eval'`, it is not subsumed by
+            //     `script-src 'none'`, so Chromium blocks the frame navigation with ERR_BLOCKED_BY_CSP (contentDocument is null).
+            const unsubsumedBlockedFrame = await new Promise((resolve) => {
+                const ifr = document.createElement('iframe');
+                ifr.csp = "script-src 'none'";
+                ifr.onload = () => {
+                    resolve(ifr.contentDocument);
+                };
+                ifr.src = `/frame.html?t=${Date.now()}`;
+                document.body.appendChild(ifr);
+            });
+
+            // (f) Restrictive csp="connect-src 'none'" on srcdoc blocks even same-origin fetch('/dot.png')
+            const restrictiveConnectNone = await new Promise((resolve) => {
+                const ifr = document.createElement('iframe');
+                ifr.csp = "connect-src 'none'";
+                const onMsg = (e) => {
+                    if (e.source === ifr.contentWindow && e.data?.type === 'iframe-csp-tighten') {
+                        window.removeEventListener('message', onMsg);
+                        resolve(e.data.status);
+                    }
+                };
+                window.addEventListener('message', onMsg);
+                ifr.srcdoc = `<script>
+                    fetch('/dot.png')
+                        .then(() => parent.postMessage({ type: 'iframe-csp-tighten', status: 'allowed' }, '*'))
+                        .catch(() => parent.postMessage({ type: 'iframe-csp-tighten', status: 'blocked' }, '*'));
+                <\/script>`;
+                document.body.appendChild(ifr);
+            });
+
+            return {
+                allowCspFromBypassAttempt,
+                subsumedBypassAttempt,
+                srcdocBypassAttempt,
+                restrictiveScriptNoneWithOptIn,
+                unsubsumedBlockedFrame,
+                restrictiveConnectNone,
+            };
+        });
+
+        expect(mode1IframeCsp).toEqual({
+            allowCspFromBypassAttempt: { fetch: 'blocked', scriptBadge: 'script: allowed' },
+            subsumedBypassAttempt: { fetch: 'blocked', scriptBadge: 'script: allowed' },
+            srcdocBypassAttempt: 'blocked',
+            restrictiveScriptNoneWithOptIn: 'script: blocked',
+            unsubsumedBlockedFrame: null,
+            restrictiveConnectNone: 'blocked',
+        });
+
+        // Verify violations inside the permissive-<iframe csp> frames were still reported to matrix³,
+        // while the iframe-only `connect-src 'none'` on `/dot.png` did NOT report `'self'` under connect-src.
+        const report = await openPanel('report');
+        await expect(await getSourceCheckbox(report, 'https://*.github.com', 'connect-src').locator()).toHaveClass(/violation/);
+        await expect(await getSourceCheckbox(report, 'https://*.example.com', 'connect-src').locator()).toHaveClass(/violation/);
+        await expect(await getSourceCheckbox(report, "'self'", 'connect-src').locator()).not.toHaveClass(/violation/);
+
+        // 2. <iframe sandbox="..."> under Mode 1 (First Party):
+        //    - Restrictive `sandbox=""` blocks script execution even though First Party allows scripts.
+        //    - `sandbox="allow-scripts"` (without `allow-same-origin`) forces an opaque origin ("null") and blocks document.cookie,
+        //      while still enforcing matrix³'s `connect-src 'self'` inside the sandboxed frame.
+        //    - Permissive `sandbox="allow-scripts allow-same-origin allow-forms allow-popups"` cannot bypass matrix³'s connect-src.
+        const mode1IframeSandbox = await testbench.evaluate(async () => {
+            // (a) Empty sandbox="" (with allow-same-origin only so we can inspect DOM) blocks scripts in /frame.html
+            const noScriptsSandboxBadge = await new Promise((resolve) => {
+                const ifr = document.createElement('iframe');
+                ifr.sandbox = 'allow-same-origin';
+                ifr.onload = () => {
+                    resolve(ifr.contentDocument?.getElementById('frame-script')?.textContent);
+                };
+                ifr.src = `/frame.html?t=${Date.now()}`;
+                document.body.appendChild(ifr);
+            });
+
+            // (b) sandbox="allow-scripts" (no allow-same-origin) forces opaque origin ("null") & blocks document.cookie
+            const opaqueSandbox = await new Promise((resolve) => {
+                const ifr = document.createElement('iframe');
+                ifr.sandbox = 'allow-scripts';
+                const onMsg = (e) => {
+                    if (e.source === ifr.contentWindow && e.data?.type === 'iframe-sandbox-opaque') {
+                        window.removeEventListener('message', onMsg);
+                        resolve(e.data);
+                    }
+                };
+                window.addEventListener('message', onMsg);
+                ifr.srcdoc = `<script>
+                    let cookieErr = null;
+                    try { void document.cookie; } catch (e) { cookieErr = e.name; }
+                    fetch('https://api.github.com/')
+                        .then(() => parent.postMessage({ type: 'iframe-sandbox-opaque', origin: window.origin, cookieErr, fetch: 'allowed' }, '*'))
+                        .catch(() => parent.postMessage({ type: 'iframe-sandbox-opaque', origin: window.origin, cookieErr, fetch: 'blocked' }, '*'));
+                <\/script>`;
+                document.body.appendChild(ifr);
+            });
+
+            // (c) Permissive sandbox="allow-scripts allow-same-origin allow-forms allow-popups" cannot bypass connect-src
+            const permissiveSandboxFetch = await new Promise((resolve) => {
+                const ifr = document.createElement('iframe');
+                ifr.sandbox = 'allow-scripts allow-same-origin allow-forms allow-popups';
+                const onMsg = (e) => {
+                    if (e.source === ifr.contentWindow && e.data?.type === 'matrix3-frame' && 'fetch' in e.data) {
+                        window.removeEventListener('message', onMsg);
+                        resolve(e.data.fetch);
+                    }
+                };
+                window.addEventListener('message', onMsg);
+                ifr.src = `/frame.html?fetch=1&t=${Date.now()}`;
+                document.body.appendChild(ifr);
+            });
+
+            return { noScriptsSandboxBadge, opaqueSandbox, permissiveSandboxFetch };
+        });
+
+        expect(mode1IframeSandbox).toEqual({
+            noScriptsSandboxBadge: 'script: blocked',
+            opaqueSandbox: {
+                type: 'iframe-sandbox-opaque',
+                origin: 'null',
+                cookieErr: 'SecurityError',
+                fetch: 'blocked',
+            },
+            permissiveSandboxFetch: 'blocked',
+        });
+
+        // 3. Mode 2 (Sandbox-Lite: `sandbox allow-scripts allow-forms`, no `allow-same-origin`):
+        //    An iframe with `sandbox="allow-scripts allow-same-origin"` and `csp="default-src * 'unsafe-inline'"`
+        //    CANNOT regain same-origin access (`allow-same-origin` remains stripped by matrix³'s CSP sandbox header).
+        await setDefaultPolicy(serviceWorker, 2);
+        await testbench.reload();
+
+        const mode2SandboxEscapeAttempt = await testbench.evaluate(async () => {
+            return await new Promise((resolve) => {
+                const ifr = document.createElement('iframe');
+                ifr.sandbox = 'allow-scripts allow-same-origin';
+                ifr.csp = "default-src * 'unsafe-inline' 'unsafe-eval'";
+                const onMsg = (e) => {
+                    if (e.source === ifr.contentWindow && e.data?.type === 'matrix3-frame') {
+                        window.removeEventListener('message', onMsg);
+                        let crossOriginAccessError = null;
+                        try {
+                            // Even though parent and child both loaded from http://127.0.0.1:8123 and the iframe
+                            // specified sandbox="allow-scripts allow-same-origin", matrix³'s CSP sandbox directive
+                            // forces each into a distinct opaque origin ("null"), so cross-frame access throws SecurityError!
+                            void ifr.contentWindow.location.href;
+                        } catch (err) {
+                            crossOriginAccessError = err.name;
+                        }
+                        resolve({
+                            parentOrigin: window.origin,
+                            frameLoaded: e.data.status === 'loaded',
+                            contentDocumentIsNull: ifr.contentDocument === null,
+                            crossOriginAccessError,
+                        });
+                    }
+                };
+                window.addEventListener('message', onMsg);
+                ifr.src = `/frame.html?hdr=Allow-CSP-From&value=*&t=${Date.now()}`;
+                document.body.appendChild(ifr);
+            });
+        });
+
+        expect(mode2SandboxEscapeAttempt).toEqual({
+            parentOrigin: 'null',
+            frameLoaded: true,
+            contentDocumentIsNull: true,
+            crossOriginAccessError: 'SecurityError',
+        });
+
+        // 4. Mode 4 (Strict: `default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:`):
+        //    Allow `frame-src 'self'` so `/frame.html` can load, then verify that an iframe with BOTH
+        //    `csp="default-src * data: 'unsafe-inline' 'unsafe-eval'"` AND `sandbox="allow-scripts allow-same-origin"`
+        //    still has its scripts completely blocked by matrix³'s Strict policy on `/frame.html` (both via
+        //    `Allow-CSP-From: *` blanket enforcement and via CSPEE subsumption) and on `srcdoc`.
+        await setDefaultPolicy(serviceWorker, 4);
+        await testbench.reload();
+        await getSourceCheckbox(report, "'self'", 'frame-src').check();
+        await waitForPanelIdle(report);
+        await testbench.reload();
+
+        const mode4BypassAttempt = await testbench.evaluate(async () => {
+            const netFrameOptIn = await new Promise((resolve) => {
+                const ifr = document.createElement('iframe');
+                ifr.csp = "default-src * 'unsafe-inline' 'unsafe-eval'";
+                ifr.sandbox = 'allow-scripts allow-same-origin';
+                ifr.onload = () => {
+                    resolve(ifr.contentDocument?.getElementById('frame-script')?.textContent);
+                };
+                ifr.src = `/frame.html?hdr=Allow-CSP-From&value=*&t=${Date.now()}`;
+                document.body.appendChild(ifr);
+            });
+
+            const netFrameSubsumed = await new Promise((resolve) => {
+                const ifr = document.createElement('iframe');
+                ifr.csp = "default-src * data: 'unsafe-inline' 'unsafe-eval'";
+                ifr.sandbox = 'allow-scripts allow-same-origin';
+                ifr.onload = () => {
+                    resolve(ifr.contentDocument?.getElementById('frame-script')?.textContent);
+                };
+                ifr.src = `/frame.html?t=${Date.now()}`;
+                document.body.appendChild(ifr);
+            });
+
+            const srcdocFrame = await new Promise((resolve) => {
+                const ifr = document.createElement('iframe');
+                ifr.csp = "default-src * 'unsafe-inline' 'unsafe-eval'";
+                ifr.sandbox = 'allow-scripts allow-same-origin';
+                ifr.onload = () => {
+                    resolve(ifr.contentDocument?.getElementById('srcdoc-probe')?.textContent);
+                };
+                ifr.srcdoc = `<span id="srcdoc-probe">script: blocked</span><script>document.getElementById('srcdoc-probe').textContent = 'script: allowed';<\/script>`;
+                document.body.appendChild(ifr);
+            });
+
+            return { netFrameOptIn, netFrameSubsumed, srcdocFrame };
+        });
+
+        expect(mode4BypassAttempt).toEqual({
+            netFrameOptIn: 'script: blocked',
+            netFrameSubsumed: 'script: blocked',
+            srcdocFrame: 'script: blocked',
+        });
+
+        await report.locator('button#abandon').click();
+        await waitForPanelIdle(report);
+    });
+
+    test('HTTP Link preload/modulepreload headers, X-Frame-Options preservation, <meta http-equiv="Content-Security-Policy">, Refresh, and <iframe credentialless>', async ({
+        serviceWorker,
+        testbench,
+        openPanel,
+    }) => {
+        await setDefaultPolicy(serviceWorker, 1);
+        await testbench.goto('http://127.0.0.1:8123/reset');
+
+        // 1. HTTP `Link:` response headers (`rel=preload; as=script`, `rel=modulepreload`, `rel=preload; as=fetch`)
+        //    via both repeated `hdr=...&value=...` and indexed `hdr[1]=...&value[1]=...` query parameters:
+        //    In Blink (`PreloadHelper::LoadLinksFromHeader`), resource-loading `Link` headers execute at
+        //    `kDocumentAfterCommitWithoutViewport` after the document's `PolicyContainer` (including matrix³'s
+        //    appended CSP) is committed, so cross-origin Link header preloads are blocked and reported.
+        await testbench.evaluate(async () => {
+            await new Promise((resolve) => {
+                const ifr = document.createElement('iframe');
+                const params = new URLSearchParams();
+                params.append('hdr', 'Link');
+                params.append('value', '<https://link-preload.example.net/app.js>; rel=preload; as=script');
+                params.append('hdr[1]', 'Link');
+                params.append('value[1]', '<https://link-module.example.org/mod.js>; rel=modulepreload');
+                params.append('hdr[2]', 'Link');
+                params.append('value[2]', '<https://link-fetch.example.com/data.json>; rel=preload; as=fetch; crossorigin');
+                params.append('t', String(Date.now()));
+                ifr.onload = resolve;
+                ifr.src = `/frame.html?${params.toString()}`;
+                document.body.appendChild(ifr);
+            });
+        });
+
+        const report = await openPanel('report');
+        await expect(await getSourceCheckbox(report, 'https://*.example.net', 'script-src').locator()).toHaveClass(/violation/);
+        await expect(await getSourceCheckbox(report, 'https://*.example.org', 'script-src').locator()).toHaveClass(/violation/);
+        await expect(await getSourceCheckbox(report, 'https://*.example.com', 'connect-src').locator()).toHaveClass(/violation/);
+
+        // 2. Interactive Header Builder UI (`#header-builder-name`, `#header-builder-value`, custom "Other…", `#headers`)
+        //    and `X-Frame-Options: DENY` preservation (`AncestorThrottle::EvaluateXFrameOptions`):
+        //    In Chromium (`ancestor_throttle.cc`), any enforced `Content-Security-Policy` header with a
+        //    `frame-ancestors` directive causes Chromium to ignore `X-Frame-Options`.
+        //    Verify that even if a server sends `frame-ancestors *` and the user clicks Accept (#accept),
+        //    `Policy.sanitizeForAppend()` strips `frame-ancestors` from matrix³'s appended dNR rule so
+        //    a response with `X-Frame-Options: DENY` (`/frame.html?hdr=X-Frame-Options&value=DENY`) is still blocked!
+        await testbench.locator('#csp').fill("default-src 'self'; script-src 'self' 'unsafe-inline'; frame-ancestors *");
+        await testbench.locator('#header-builder-name').selectOption('Link');
+        await testbench.locator('#header-builder-value').selectOption('__other__');
+        await testbench.locator('#header-builder-custom-value').fill('<https://hdr-builder.example.edu/preload.js>; rel=preload; as=script');
+        await testbench.locator('#header-builder-append-btn').click();
+        await testbench.locator('#header-builder-name').selectOption('__other__');
+        await testbench.locator('#header-builder-custom-name').fill('X-Testbench-Custom');
+        await testbench.locator('#header-builder-custom-value').fill('enabled');
+        await testbench.locator('#header-builder-append-btn').click();
+        await testbench.locator('form.csp-form button[type="submit"]').click();
+
+        await expect(await getSourceCheckbox(report, 'https://*.example.edu', 'script-src').locator()).toHaveClass(/violation/);
+
+        const details = report.locator('div#serverpolicy details');
+        await expect(details).toBeVisible();
+        await details.locator('summary').click();
+        await report.locator('button#accept').click();
+        await waitForPanelIdle(report);
+
+        const xfoBlocked = await testbench.evaluate(async () => {
+            return await new Promise((resolve) => {
+                const ifr = document.createElement('iframe');
+                ifr.onload = () => resolve(ifr.contentDocument === null);
+                ifr.src = `/frame.html?hdr=X-Frame-Options&value=DENY&t=${Date.now()}`;
+                document.body.appendChild(ifr);
+            });
+        });
+        expect(xfoBlocked).toBe(true);
+
+        await report.locator('button#abandon').click();
+        await waitForPanelIdle(report);
+
+        // 3. `<meta http-equiv="Content-Security-Policy">` (`HttpEquiv::ProcessHttpEquivContentSecurityPolicy`):
+        //    - A permissive `<meta http-equiv="Content-Security-Policy" content="default-src * data: blob: 'unsafe-inline' 'unsafe-eval'">`
+        //      cannot loosen matrix³'s HTTP response CSP (nor in a child `about:blank` frame that inherits the parent's PolicyContainer).
+        //    - A restrictive `<meta http-equiv="Content-Security-Policy" content="connect-src 'none'">` tightens the frame additively.
+        const metaCspResults = await testbench.evaluate(async () => {
+            // (a) Permissive <meta http-equiv="Content-Security-Policy"> trying to allow cross-origin connect-src *
+            const permissiveMetaBypass = await new Promise((resolve) => {
+                const ifr = document.createElement('iframe');
+                const onMsg = (e) => {
+                    if (e.source === ifr.contentWindow && e.data?.type === 'meta-csp-bypass') {
+                        window.removeEventListener('message', onMsg);
+                        resolve(e.data);
+                    }
+                };
+                window.addEventListener('message', onMsg);
+                ifr.srcdoc = `<!doctype html><html><head>
+                    <meta http-equiv="Content-Security-Policy" content="default-src * data: blob: 'unsafe-inline' 'unsafe-eval'">
+                </head><body><script>
+                    (async () => {
+                        let directFetch = 'allowed';
+                        try {
+                            await fetch('https://meta-bypass.invalid/');
+                        } catch {
+                            directFetch = 'blocked';
+                        }
+                        // Also test a child about:blank iframe created after the <meta> policy was added to PolicyContainer
+                        const child = document.createElement('iframe');
+                        document.body.appendChild(child);
+                        let childFetch = 'allowed';
+                        try {
+                            await child.contentWindow.fetch('https://meta-child-bypass.invalid/');
+                        } catch {
+                            childFetch = 'blocked';
+                        }
+                        parent.postMessage({ type: 'meta-csp-bypass', directFetch, childFetch }, '*');
+                    })();
+                <\/script></body></html>`;
+                document.body.appendChild(ifr);
+            });
+
+            // (b) Restrictive <meta http-equiv="Content-Security-Policy" content="connect-src 'none'"> blocks same-origin /dot.png
+            const restrictiveMetaTighten = await new Promise((resolve) => {
+                const ifr = document.createElement('iframe');
+                const onMsg = (e) => {
+                    if (e.source === ifr.contentWindow && e.data?.type === 'meta-csp-tighten') {
+                        window.removeEventListener('message', onMsg);
+                        resolve(e.data.status);
+                    }
+                };
+                window.addEventListener('message', onMsg);
+                ifr.srcdoc = `<!doctype html><html><head>
+                    <meta http-equiv="Content-Security-Policy" content="connect-src 'none'">
+                </head><body><script>
+                    fetch('/dot.png')
+                        .then(() => parent.postMessage({ type: 'meta-csp-tighten', status: 'allowed' }, '*'))
+                        .catch(() => parent.postMessage({ type: 'meta-csp-tighten', status: 'blocked' }, '*'));
+                <\/script></body></html>`;
+                document.body.appendChild(ifr);
+            });
+
+            return { permissiveMetaBypass, restrictiveMetaTighten };
+        });
+
+        expect(metaCspResults).toEqual({
+            permissiveMetaBypass: {
+                type: 'meta-csp-bypass',
+                directFetch: 'blocked',
+                childFetch: 'blocked',
+            },
+            restrictiveMetaTighten: 'blocked',
+        });
+
+        // 4. `<iframe credentialless>` (`commit_params_->is_credentialless`):
+        //    Verify an `<iframe credentialless>` subframe still receives matrix³'s appended CSP and blocks/reports violations.
+        const credentiallessResult = await testbench.evaluate(async () => {
+            return await new Promise((resolve) => {
+                const ifr = document.createElement('iframe');
+                ifr.credentialless = true;
+                const onMsg = (e) => {
+                    if (e.source === ifr.contentWindow && e.data?.type === 'matrix3-frame' && 'fetch' in e.data) {
+                        window.removeEventListener('message', onMsg);
+                        resolve({
+                            credentialless: ifr.credentialless,
+                            fetch: e.data.fetch,
+                        });
+                    }
+                };
+                window.addEventListener('message', onMsg);
+                ifr.src = `/frame.html?fetch=1&t=${Date.now()}`;
+                document.body.appendChild(ifr);
+            });
+        });
+        expect(credentiallessResult).toEqual({
+            credentialless: true,
+            fetch: 'blocked',
+        });
+
+        // 5. `Refresh:` HTTP response header & `<meta http-equiv="refresh">` (`Document::MaybeHandleHttpRefresh`):
+        //    - `Refresh: 0; url=javascript:...` HTTP header and `<meta http-equiv="refresh" content="0; url=javascript:...">`
+        //      are refused by Chromium and never execute JS.
+        //    - Under Mode 3 (Sandbox: `Content-Security-Policy: sandbox` without `allow-scripts`),
+        //      `<meta http-equiv="refresh" content="0; url=/frame.html">` is blocked by `WebSandboxFlags::kAutomaticFeatures`.
+        const jsRefreshBlocked = await testbench.evaluate(async () => {
+            return await new Promise((resolve) => {
+                const ifr = document.createElement('iframe');
+                ifr.onload = () => {
+                    setTimeout(() => {
+                        resolve(Boolean(ifr.contentWindow?.__jsRefreshExecuted));
+                    }, 150);
+                };
+                ifr.src = `/frame.html?hdr=Refresh&value=${encodeURIComponent('0; url=javascript:window.__jsRefreshExecuted=true')}&t=${Date.now()}`;
+                document.body.appendChild(ifr);
+            });
+        });
+        expect(jsRefreshBlocked).toBe(false);
+
+        await setDefaultPolicy(serviceWorker, 3);
+        await testbench.goto('http://127.0.0.1:8123/reset');
+        await testbench.evaluate(() => {
+            const ifr = document.createElement('iframe');
+            ifr.id = 'sandbox-meta-refresh-probe';
+            ifr.srcdoc = `<!doctype html><html><head>
+                <meta http-equiv="refresh" content="0; url=/frame.html?meta_refresh_escaped=1">
+            </head><body>sandboxed meta refresh</body></html>`;
+            document.body.appendChild(ifr);
+        });
+        await testbench.waitForTimeout(300);
+        // Under Mode 3 (CSP `sandbox`), `<meta http-equiv="refresh">` is blocked by kAutomaticFeatures
+        // (so no frame ever navigates to `/frame.html?meta_refresh_escaped=1`).
+        const escapedFrames = testbench.frames().filter((f) => f.url().includes('meta_refresh_escaped=1'));
+        expect(escapedFrames).toHaveLength(0);
+    });
 });
