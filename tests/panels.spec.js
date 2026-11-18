@@ -2261,4 +2261,141 @@ test.describe('Extension Panels, Buttons, and Options', () => {
         expect(result.cloudAfterFinalPush['rule:local-only.test']?.policy).toContain("font-src 'self'");
         expect(result.cloudAfterFinalPush['group:LocalOnlyGroup']).toEqual({ 'https://loc.test': ['style-src'] });
     });
+
+    test('Ignore group default-src + !directive negation gates badge & Report UI, and applyTrustGroup enforces none-mutex', async ({
+        serviceWorker,
+        testbench,
+        openPanel,
+    }) => {
+        await setDefaultPolicy(serviceWorker, 1);
+
+        // 1. Configure Ignore['https://*.github.com'] = ['default-src', '!script-src'] via Groups panel UI
+        const groupsPanel = await openPanel('groups');
+        const ignoreSection = groupsPanel.locator('.group[data-name="Ignore"]');
+        await ignoreSection.locator('.neworigin').fill('https://*.github.com');
+        await ignoreSection.locator('.addorigin').click();
+
+        const defaultBox = await getSourceCheckbox(
+            groupsPanel,
+            'https://*.github.com',
+            'default-src',
+            '.group[data-name="Ignore"] table.sources'
+        ).locator();
+        const scriptBox = await getSourceCheckbox(
+            groupsPanel,
+            'https://*.github.com',
+            'script-src',
+            '.group[data-name="Ignore"] table.sources'
+        ).locator();
+
+        // Click default-src once (checked = ignore all directives by default)
+        await defaultBox.click();
+        await expect(defaultBox).toBeChecked();
+        await expect(defaultBox).toHaveAttribute('title', /be IGNORED/);
+
+        // Click script-src twice (checked -> indeterminate = !script-src override)
+        await scriptBox.click();
+        await scriptBox.click();
+        expect(await scriptBox.evaluate((el) => ({ checked: el.checked, indeterminate: el.indeterminate }))).toEqual({
+            checked: false,
+            indeterminate: true,
+        });
+        await expect(scriptBox).toHaveAttribute('title', /be REPORTED/);
+
+        // Wait for service worker's Options cache to see the updated Ignore group
+        await expect
+            .poll(() =>
+                serviceWorker.evaluate(async () => {
+                    const { groups } = await chrome.storage.local.get('groups');
+                    return groups?.Ignore?.['https://*.github.com'];
+                })
+            )
+            .toEqual(['default-src', '!script-src']);
+
+        // 2. Navigate to /frame.html (no onload cross-origin probes -> clean tab, empty badge)
+        await testbench.goto('http://127.0.0.1:8123/frame.html');
+        const tabId = await groupsPanel.evaluate(async () => {
+            const sidepanel = await import('/include/sidepanel.js');
+            return (await sidepanel.getActiveTab()).id;
+        });
+
+        const getBadge = () =>
+            serviceWorker.evaluate((id) => chrome.action.getBadgeText({ tabId: id }), tabId);
+        const getTrackedViolations = () =>
+            groupsPanel.evaluate(async (id) => {
+                const { MessageTypes } = await import('/include/commands.js');
+                return chrome.runtime.sendMessage({
+                    command: MessageTypes.REQ_POLICY,
+                    data: { id, domain: '127.0.0.1' },
+                });
+            }, tabId);
+
+        expect(await getBadge()).toBe('');
+
+        // 3. Trigger a connect-src violation for api.github.com (ignored via default-src):
+        //    tracker must still record it in REQ_POLICY, while badge stays empty!
+        await testbench.evaluate(() => {
+            fetch('https://api.github.com/ignored-probe').catch(() => {});
+        });
+        await expect
+            .poll(async () => (await getTrackedViolations())?.['connect-src'] ?? [])
+            .toContain('https://*.github.com');
+        expect(await getBadge()).toBe('');
+
+        // 4. Trigger a script-src-elem violation for api.github.com (collapsed to script-src, negated by !script-src):
+        //    badge MUST flip to "!"!
+        await testbench.evaluate(() => {
+            const s = document.createElement('script');
+            s.src = 'https://api.github.com/negated-probe.js';
+            document.head.appendChild(s);
+        });
+        await expect.poll(getBadge).toBe('!');
+
+        // 5. Opening Report clears the badge and shows only the non-ignored script-src violation
+        const report = await openPanel('report');
+        await expect.poll(getBadge).toBe('');
+        const reported = await getReportedViolations(report);
+        expect(reported['https://*.github.com']).toEqual(['script-src']);
+
+        // #trustcontrol must be hidden while only the built-in Ignore group exists
+        await expect(report.locator('#trustcontrol')).not.toBeVisible();
+
+        // 6. Add a custom group testing 'none'-leader mutex in both directions when applied over First Party mode:
+        //    - First Party has img-src 'self' https: data: blob: -> group sets 'none' (must clear the rest)
+        //    - First Party has worker-src 'none' -> group sets 'self' (must clear 'none')
+        await groupsPanel.evaluate(async () => {
+            const { default: Options } = await import('/include/options.js');
+            const groups = await Options.getGroups();
+            groups.MutexGroup = {
+                "'none'": ['img-src'],
+                "'self'": ['worker-src'],
+            };
+            await Options.saveGroups();
+        });
+
+        await expect(report.locator('#trustcontrol')).toBeVisible();
+        const groupOptions = await report.locator('#trustgroup option').allTextContents();
+        expect(groupOptions).toEqual(['MutexGroup']); // Ignore excluded
+
+        await report.locator('#trustgroup').selectOption('MutexGroup');
+        await report.locator('#applygroup').click();
+
+        await expect
+            .poll(() =>
+                serviceWorker.evaluate(async () => {
+                    const rules = await chrome.declarativeNetRequest.getSessionRules();
+                    const r = rules.find((x) => x.action.type === 'modifyHeaders' && x.condition.urlFilter === '||127.0.0.1^');
+                    return r?.action.responseHeaders[0].value ?? '';
+                })
+            )
+            .toContain("worker-src 'self';");
+
+        const finalHeader = await serviceWorker.evaluate(async () => {
+            const rules = await chrome.declarativeNetRequest.getSessionRules();
+            const r = rules.find((x) => x.action.type === 'modifyHeaders' && x.condition.urlFilter === '||127.0.0.1^');
+            return r.action.responseHeaders[0].value;
+        });
+        expect(finalHeader).toMatch(/(?:^|; )img-src 'none';/);
+        expect(finalHeader).toMatch(/(?:^|; )worker-src 'self';/);
+    });
 });
