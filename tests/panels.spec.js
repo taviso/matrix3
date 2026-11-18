@@ -1950,4 +1950,315 @@ test.describe('Extension Panels, Buttons, and Options', () => {
             context.off('page', onPage);
         }
     });
+
+    test('Cloud Sync: pull, manually delete rule/group/origin in UI, then push removes them from cloud', async ({
+        serviceWorker,
+        openPanel,
+    }) => {
+        // Seed remote cloud state as if pushed from another device
+        await serviceWorker.evaluate(async () => {
+            await chrome.storage.sync.set({
+                'rule:keep.example.com': { policy: "script-src 'self';" },
+                'rule:remove.example.com': { policy: "img-src 'self';" },
+                'group:KeepGroup': {
+                    'https://keep.test': ['img-src'],
+                    'https://drop-origin.test': ['font-src'],
+                },
+                'group:DeleteGroup': {
+                    'https://gone.test': ['connect-src'],
+                },
+                'group:Ignore': {
+                    'https://noisy.test': ['media-src'],
+                },
+            });
+        });
+
+        // 1. Pull from cloud via the Export panel UI
+        const exp = await openPanel('export');
+        await exp.locator('#pull').click();
+        await expect
+            .poll(() =>
+                serviceWorker.evaluate(async () => {
+                    const rules = await chrome.declarativeNetRequest.getDynamicRules();
+                    return rules
+                        .filter((r) => r.action.type === 'modifyHeaders')
+                        .map((r) => r.condition.urlFilter.slice(2, -1))
+                        .sort();
+                })
+            )
+            .toEqual(['keep.example.com', 'remove.example.com']);
+
+        // 2. Manually delete remove.example.com in the Manage Rules panel
+        const manage = await openPanel('manage');
+        const removeRow = manage.locator('#dynamic tbody tr').filter({ hasText: 'remove.example.com' });
+        await expect(removeRow).toHaveCount(1);
+        await removeRow.locator('input[type="checkbox"]').check();
+        await manage.locator('#removedynamic').click();
+        await expect(removeRow).toHaveCount(0);
+
+        // 3. Manually delete DeleteGroup, drop-origin.test from KeepGroup, and noisy.test from Ignore in Groups panel
+        const groupsPanel = await openPanel('groups');
+        await groupsPanel.locator('.group[data-name="DeleteGroup"] .delgroup').click();
+        await expect(groupsPanel.locator('.group[data-name="DeleteGroup"]')).toHaveCount(0);
+
+        const keepGroupEl = groupsPanel.locator('.group[data-name="KeepGroup"]');
+        const dropOriginRow = keepGroupEl.locator('tr').filter({ hasText: 'drop-origin.test' });
+        await dropOriginRow.hover();
+        await dropOriginRow.locator('.delorigin').click();
+        await expect(dropOriginRow).toHaveCount(0);
+
+        const ignoreGroupEl = groupsPanel.locator('.group[data-name="Ignore"]');
+        const noisyRow = ignoreGroupEl.locator('tr').filter({ hasText: 'noisy.test' });
+        await noisyRow.hover();
+        await noisyRow.locator('.delorigin').click();
+        await expect(noisyRow).toHaveCount(0);
+
+        // Wait for Export panel's mirror to process NOTIFY_RULES / storage changes, then Push
+        await expect
+            .poll(() => exp.locator('#export').inputValue())
+            .not.toContain('remove.example.com');
+        await exp.locator('#push').click();
+        await expect(exp.locator('#lastpush')).toContainText('1 rules, 2 groups');
+
+        // 4. Verify deletions propagated to chrome.storage.sync and report-uri was stripped
+        const cloudState = await serviceWorker.evaluate(() => chrome.storage.sync.get(null));
+        expect(cloudState['rule:remove.example.com']).toBeUndefined();
+        expect(cloudState['rule:keep.example.com']?.policy).toContain("script-src 'self'");
+        expect(cloudState['rule:keep.example.com']?.policy).not.toContain('report-uri');
+        expect(cloudState['rule:keep.example.com']?.policy).not.toContain('report-to');
+        expect(cloudState['group:DeleteGroup']).toBeUndefined();
+        expect(cloudState['group:KeepGroup']).toEqual({ 'https://keep.test': ['img-src'] });
+        expect(cloudState['group:Ignore']).toEqual({});
+    });
+
+    test('Cloud Sync: symmetric 3-way pushToCloud merge, remote preservation, and conflict resolution', async ({
+        serviceWorker,
+        openPanel,
+    }) => {
+        const exp = await openPanel('export');
+
+        const result = await exp.evaluate(async () => {
+            const { RulesManager } = await import('/include/sidepanel.js');
+            const { default: Options } = await import('/include/options.js');
+            const { default: Policy } = await import('/include/policy.js');
+
+            // Initial state on Device A: 2 dynamic rules, 1 session draft, and 2 groups
+            await RulesManager.addSessionRule('shared.test', new Policy("script-src 'self'"));
+            await RulesManager.commitSessionRulesForHost('shared.test');
+            await RulesManager.addSessionRule('local-del.test', new Policy("img-src 'self'"));
+            await RulesManager.commitSessionRulesForHost('local-del.test');
+            await RulesManager.addSessionRule('draft.test', new Policy("font-src 'self'"));
+
+            const groups = await Options.getGroups();
+            groups.Shared = {
+                'https://keep.test': ['img-src', 'script-src'],
+                'https://local-edit.test': ['img-src'],
+                'https://remote-edit.test': ['font-src'],
+                'https://conflict.test': ['connect-src'],
+                'https://local-del.test': ['media-src'],
+            };
+            groups.LocalDelGroup = {
+                'https://old.test': ['img-src'],
+            };
+            await Options.saveGroups();
+            await RulesManager.pushToCloud();
+
+            const afterFirstPush = await chrome.storage.sync.get(null);
+
+            // Simulate Device B editing cloud directly while Device A is offline:
+            // - Adds unpulled rule:remote-only.test and group:RemoteOnlyGroup
+            // - Reorders keep.test dirs (must count as unchanged), edits remote-edit.test & conflict.test, adds remote-add.test
+            await chrome.storage.sync.set({
+                'rule:remote-only.test': { policy: "style-src 'self';" },
+                'group:RemoteOnlyGroup': { 'https://r.test': ['img-src'] },
+                'group:Shared': {
+                    'https://keep.test': ['script-src', 'img-src'],
+                    'https://local-edit.test': ['img-src'],
+                    'https://remote-edit.test': ['font-src', 'style-src'],
+                    'https://conflict.test': ['connect-src', 'frame-src'],
+                    'https://local-del.test': ['media-src'],
+                    'https://remote-add.test': ['object-src'],
+                },
+            });
+
+            // Concurrent local edits on Device A before pushing:
+            await RulesManager.resetHostRules('local-del.test');
+            delete groups.LocalDelGroup;
+            groups.Shared['https://local-edit.test'] = ['img-src', 'media-src'];
+            groups.Shared['https://conflict.test'] = ['connect-src', 'worker-src'];
+            delete groups.Shared['https://local-del.test'];
+            groups.Shared['https://local-add.test'] = ['script-src'];
+            await Options.saveGroups();
+
+            // Push TWICE before pulling: unpulled remote-only items and remote edits must survive both pushes
+            await RulesManager.pushToCloud();
+            const afterSecondPush = await chrome.storage.sync.get(null);
+            await RulesManager.pushToCloud();
+            const afterThirdPush = await chrome.storage.sync.get(null);
+            const { synced: baselineBeforePull } = await chrome.storage.local.get('synced');
+
+            // Finally pull: Device A should now receive remote-only items and remote group edits, keeping session draft
+            await RulesManager.pullFromCloud();
+            const finalDynamic = RulesManager.getRules()
+                .filter((r) => !r.isSession)
+                .map((r) => r.host)
+                .sort();
+            const finalSession = RulesManager.getRules()
+                .filter((r) => r.isSession)
+                .map((r) => r.host)
+                .sort();
+            const finalGroups = structuredClone(await Options.getGroups());
+
+            return {
+                afterFirstPush,
+                afterSecondPush,
+                afterThirdPush,
+                baselineBeforePull,
+                finalDynamic,
+                finalSession,
+                finalGroups,
+            };
+        });
+
+        // Session draft must never be pushed; report-uri must be stripped
+        expect(result.afterFirstPush['rule:draft.test']).toBeUndefined();
+        expect(result.afterFirstPush['rule:shared.test']?.policy).not.toContain('report-uri');
+
+        // Both pushes after concurrent edits must delete local-del items while preserving all unpulled remote state
+        for (const snap of [result.afterSecondPush, result.afterThirdPush]) {
+            expect(snap['rule:local-del.test']).toBeUndefined();
+            expect(snap['group:LocalDelGroup']).toBeUndefined();
+            expect(snap['rule:draft.test']).toBeUndefined();
+            expect(snap['rule:remote-only.test']).toEqual({ policy: "style-src 'self';" });
+            expect(snap['group:RemoteOnlyGroup']).toEqual({ 'https://r.test': ['img-src'] });
+            expect(snap['group:Shared']).toEqual({
+                'https://keep.test': ['script-src', 'img-src'],
+                'https://local-edit.test': ['img-src', 'media-src'],
+                'https://remote-edit.test': ['font-src', 'style-src'],
+                'https://conflict.test': ['connect-src', 'worker-src'], // local wins conflict on Push
+                'https://remote-add.test': ['object-src'],
+                'https://local-add.test': ['script-src'],
+            });
+        }
+
+        // Unpulled remote items must remain outside synced baseline until Pull
+        expect(result.baselineBeforePull.rules).not.toContain('remote-only.test');
+        expect(result.baselineBeforePull.groups.RemoteOnlyGroup).toBeUndefined();
+
+        // After Pull, Device A merges remote items while keeping its session draft
+        expect(result.finalDynamic).toEqual(['remote-only.test', 'shared.test']);
+        expect(result.finalSession).toEqual(['draft.test']);
+        expect(result.finalGroups.RemoteOnlyGroup).toEqual({ 'https://r.test': ['img-src'] });
+        expect(result.finalGroups.Shared['https://remote-edit.test']).toEqual(['font-src', 'style-src']);
+        expect(result.finalGroups.Shared['https://remote-add.test']).toEqual(['object-src']);
+    });
+
+    test('Cloud Sync: pullFromCloud edge cases (Ignore immunity, group deletion/resurrection, local-only & tab-exemption survival)', async ({
+        testbench,
+        openPanel,
+    }) => {
+        const exp = await openPanel('export');
+
+        const result = await exp.evaluate(async () => {
+            const sidepanel = await import('/include/sidepanel.js');
+            const { RulesManager } = sidepanel;
+            const { default: Options } = await import('/include/options.js');
+            const { default: Policy } = await import('/include/policy.js');
+
+            const tab = await sidepanel.getActiveTab();
+
+            // 1. Seed initial synced baseline and push
+            await RulesManager.addSessionRule('synced-keep.test', new Policy("script-src 'self'"));
+            await RulesManager.commitSessionRulesForHost('synced-keep.test');
+            await RulesManager.addSessionRule('synced-drop.test', new Policy("img-src 'self'"));
+            await RulesManager.commitSessionRulesForHost('synced-drop.test');
+
+            const groups = await Options.getGroups();
+            groups.Ignore = { 'https://ign.test': ['img-src'] };
+            groups.DropRemote = { 'https://a.test': ['img-src'] };
+            groups.DelLocalUnchanged = { 'https://b.test': ['img-src'] };
+            groups.DelLocalEditedRemotely = { 'https://c.test': ['img-src'] };
+            groups.ConflictGroup = { 'https://both.test': ['connect-src'] };
+            await Options.saveGroups();
+            await RulesManager.pushToCloud();
+
+            // 2. Add unpushed local-only items + session draft + active tab exemption
+            await RulesManager.addSessionRule('local-only.test', new Policy("font-src 'self'"));
+            await RulesManager.commitSessionRulesForHost('local-only.test');
+            await RulesManager.addSessionRule('session-draft.test', new Policy("media-src 'self'"));
+            await RulesManager.addTabExemption(tab.id);
+            groups.LocalOnlyGroup = { 'https://loc.test': ['style-src'] };
+
+            // Local deletions & conflicting edit
+            delete groups.DelLocalUnchanged;
+            delete groups.DelLocalEditedRemotely;
+            groups.ConflictGroup['https://both.test'] = ['connect-src', 'worker-src'];
+            await Options.saveGroups();
+
+            // 3. Remote changes in chrome.storage.sync:
+            // - Delete synced-drop.test, DropRemote, and Ignore (Ignore must survive locally!)
+            // - Leave DelLocalUnchanged untouched (must NOT resurrect as {})
+            // - Add a new origin to DelLocalEditedRemotely (must resurrect with ONLY the new origin)
+            // - Modify ConflictGroup differently (cloud wins on Pull)
+            await chrome.storage.sync.remove(['rule:synced-drop.test', 'group:DropRemote', 'group:Ignore']);
+            await chrome.storage.sync.set({
+                'group:DelLocalEditedRemotely': {
+                    'https://c.test': ['img-src'],
+                    'https://c-new.test': ['script-src'],
+                },
+                'group:ConflictGroup': {
+                    'https://both.test': ['connect-src', 'frame-src'],
+                },
+            });
+
+            // 4. Pull TWICE in a row to verify local-only items and deletions remain stable
+            await RulesManager.pullFromCloud();
+            await RulesManager.pullFromCloud();
+
+            const afterPullDynamic = RulesManager.getRules()
+                .filter((r) => !r.isSession)
+                .map((r) => r.host)
+                .sort();
+            const afterPullSession = RulesManager.getRules()
+                .filter((r) => r.isSession)
+                .map((r) => r.host)
+                .sort();
+            const tabStillExempt = RulesManager.isTabExempt(tab.id);
+            const afterPullGroups = structuredClone(await Options.getGroups());
+
+            // 5. Verify tab exemption can still be removed cleanly after pullFromCloud() renumbered IDs
+            await RulesManager.delTabExemption(tab.id);
+            const tabExemptAfterResume = RulesManager.isTabExempt(tab.id);
+
+            // 6. Push after pull: DelLocalUnchanged stayed deleted locally and in synced baseline,
+            //    so pushing now must remove group:DelLocalUnchanged from cloud.
+            await RulesManager.pushToCloud();
+            const cloudAfterFinalPush = await chrome.storage.sync.get(null);
+
+            return {
+                afterPullDynamic,
+                afterPullSession,
+                tabStillExempt,
+                tabExemptAfterResume,
+                afterPullGroups,
+                cloudAfterFinalPush,
+            };
+        });
+
+        expect(result.afterPullDynamic).toEqual(['local-only.test', 'synced-keep.test']);
+        expect(result.afterPullSession).toEqual(['session-draft.test']);
+        expect(result.tabStillExempt).toBe(true);
+        expect(result.tabExemptAfterResume).toBe(false);
+
+        expect(result.afterPullGroups.Ignore).toEqual({ 'https://ign.test': ['img-src'] });
+        expect(result.afterPullGroups.DropRemote).toBeUndefined();
+        expect(result.afterPullGroups.LocalOnlyGroup).toEqual({ 'https://loc.test': ['style-src'] });
+        expect(result.afterPullGroups.DelLocalUnchanged).toBeUndefined();
+        expect(result.afterPullGroups.DelLocalEditedRemotely).toEqual({ 'https://c-new.test': ['script-src'] });
+        expect(result.afterPullGroups.ConflictGroup).toEqual({ 'https://both.test': ['connect-src', 'frame-src'] });
+
+        expect(result.cloudAfterFinalPush['group:DelLocalUnchanged']).toBeUndefined();
+        expect(result.cloudAfterFinalPush['rule:local-only.test']?.policy).toContain("font-src 'self'");
+        expect(result.cloudAfterFinalPush['group:LocalOnlyGroup']).toEqual({ 'https://loc.test': ['style-src'] });
+    });
 });
