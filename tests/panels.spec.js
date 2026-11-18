@@ -190,6 +190,25 @@ test.describe('Extension Panels, Buttons, and Options', () => {
             expect(status, `probe ${probe} should be Allowed while tab is exempt`).toBe('Allowed');
         }
 
+        // Exemption must be scoped to the disabled tab (tabIds): a second tab on the
+        // same origin must still enforce Strict mode and show #disable (not #resume).
+        const secondTab = await testbench.context().newPage();
+        try {
+            await secondTab.goto(testbench.url());
+            await expect(secondTab.locator('#onload-summary')).toHaveText('23 Probes');
+            await expect(secondTab.locator('#badge-inline-plain')).toHaveText('Blocked');
+            expect(await secondTab.evaluate(() => document.querySelector('img[data-probe="img-cross"]')?.naturalWidth)).toBe(0);
+            await expect(report.locator('#resume')).toBeDisabled();
+            await expect(report.locator('#disable')).toBeVisible();
+        } finally {
+            await secondTab.close();
+        }
+
+        // Switching back to the disabled tab restores its exempt UI state.
+        await testbench.bringToFront();
+        await expect(report.locator('#resume')).toBeEnabled();
+        await expect(report.locator('#disable')).toBeHidden();
+
         // Click #resume and reload: Strict mode blocks scripts and subresources again
         await report.locator('#resume').click();
         await waitForPanelIdle(report);

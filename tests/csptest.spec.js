@@ -639,7 +639,7 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
         await expect(testbench.locator('#badge-sw')).toHaveText('Not Registered');
     });
 
-    test('navigating a second same-origin tab away does not clear the tracked Service Worker for the first tab', async ({ serviceWorker, testbench, openPanel }) => {
+    test('navigating a second same-origin tab away preserves the tracked Service Worker, and reloading the last tab after unregistration clears it', async ({ serviceWorker, testbench, openPanel }) => {
         await setDefaultPolicy(serviceWorker, 1);
         await testbench.reload();
 
@@ -679,6 +679,17 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
             await expect(freshReport.locator('div#frames button[data-value="127.0.0.1"] button.unregistersw')).toBeEnabled();
 
             await secondTab.close();
+
+            // Inverse check: once the SW unregisters itself and the last remaining tab
+            // on that origin reloads, resetViolations must clear the origin from #workers
+            // so 🔧 does not stay stuck enabled.
+            await testbench.evaluate(async () => {
+                for (const reg of await navigator.serviceWorker.getRegistrations()) await reg.unregister();
+            });
+            await testbench.reload();
+            await expect(testbench.locator('#badge-sw')).toHaveText('Not Registered');
+            await expect.poll(() => reqWorkers(report)).not.toContain('127.0.0.1');
+            await expect(freshReport.locator('div#frames button[data-value="127.0.0.1"] button.unregistersw')).toBeDisabled();
         } finally {
             // Clean up: unregister the SW and drop it from the tracker so later tests start clean.
             await testbench.evaluate(async () => {
