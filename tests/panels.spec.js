@@ -1793,4 +1793,161 @@ test.describe('Extension Panels, Buttons, and Options', () => {
             await sidepanel.applyOptions();
         });
     });
+
+    test('Untrusted web content and HTML/selector payloads render as inert text across panels', async ({
+        context,
+        serviceWorker,
+        testbench,
+        openPanel,
+    }) => {
+        const errors = [];
+        const onPageError = (err) => errors.push(String(err));
+        const onPage = (page) => page.on('pageerror', onPageError);
+        context.on('page', onPage);
+
+        try {
+        await setDefaultPolicy(serviceWorker, 1);
+
+        // Deliver hostile HTML/script/selector payloads via Server CSP headers:
+        // - passthrough directives rendered into textarea#servercsp
+        // - invalid HTML-bearing tokens in img-src (must be rejected by isValidSource)
+        // - a path-bearing source with HTML in its path (path stripped to https://example.com)
+        // - sandbox tokens attempting DOM-ID clobbering (#commit, #reset, #sandbox-enabled)
+        const hostileCsp = [
+            `base-uri </textarea><img src=x onerror="window.__xss=1"> <svg onload="window.__xss=2">`,
+            `<script>window.__xss=3</script> "][data-x="`,
+            `img-src <img/src=x/onerror=window.__xss=4> 'nonce-<script>window.__xss=5</script>' https://example.com/<img/src=x>`,
+            `sandbox commit reset sandbox-enabled allow-scripts`,
+        ].join('; ');
+
+        await testbench.goto(`http://127.0.0.1:8123/?csp=${encodeURIComponent(hostileCsp)}`);
+        await getOnloadBadges(testbench);
+
+        // Trigger a violation whose blocked-uri path/query contains HTML and selector metacharacters
+        await testbench.evaluate(() => {
+            fetch('https://api.github.com/<img%20src=x%20onerror=1>?"><svg>').catch(() => {});
+        });
+
+        const report = await openPanel('report');
+
+        // Wait for both the server CSP and the violation to populate
+        await expect(report.locator('#servercsp')).toContainText('</textarea><img src=x onerror="window.__xss=1">');
+        await expect(report.locator('#servercsp')).toContainText('"][data-x="');
+        await expect
+            .poll(async () => (await getReportedViolations(report))['https://*.github.com'] ?? [])
+            .toContain('connect-src');
+
+        // Verify zero XSS execution and zero injected HTML elements in Report
+        const reportAudit = await report.evaluate(() => ({
+            xss: window.__xss ?? null,
+            injectedMedia: document.querySelectorAll('img, svg').length,
+            scripts: Array.from(document.querySelectorAll('script'), (s) => s.getAttribute('src')),
+            serverSources: Array.from(document.querySelectorAll('#serversources tbody th'), (th) => th.title),
+        }));
+        expect(reportAudit.xss).toBeNull();
+        expect(reportAudit.injectedMedia).toBe(0);
+        expect(reportAudit.scripts.every((src) => src && !src.includes('__xss'))).toBe(true);
+        // Invalid HTML tokens dropped; path-bearing source stripped cleanly to https://example.com
+        expect(reportAudit.serverSources).toEqual(['https://example.com']);
+
+        // Accept server policy and verify hostile sandbox tokens did not clobber unrelated DOM IDs
+        await report.locator('#serverpolicy summary').click();
+        await report.locator('#accept').click();
+        await expect
+            .poll(() =>
+                serviceWorker.evaluate(async () => {
+                    const rules = await chrome.declarativeNetRequest.getSessionRules();
+                    const r = rules.find((x) => x.action.type === 'modifyHeaders' && x.condition.urlFilter === '||127.0.0.1^');
+                    return r?.action.responseHeaders[0].value ?? '';
+                })
+            )
+            .toContain('sandbox allow-scripts');
+
+        const dnrValue = await serviceWorker.evaluate(async () => {
+            const rules = await chrome.declarativeNetRequest.getSessionRules();
+            const r = rules.find((x) => x.action.type === 'modifyHeaders' && x.condition.urlFilter === '||127.0.0.1^');
+            return r.action.responseHeaders[0].value;
+        });
+        expect(dnrValue).not.toContain('commit');
+        expect(dnrValue).not.toContain('reset');
+        expect(dnrValue).not.toContain('sandbox-enabled');
+        expect(dnrValue).not.toContain('<img');
+        expect(dnrValue).not.toContain('<script');
+        await expect(report.locator('#sandbox-enabled')).toBeChecked();
+        await expect(report.locator('#allow-scripts')).toBeChecked();
+
+        // Commit the session rule, then inspect Manage Rules and About panels
+        await report.locator('#commit').click();
+        await expect
+            .poll(() =>
+                serviceWorker.evaluate(async () => {
+                    const rules = await chrome.declarativeNetRequest.getDynamicRules();
+                    return rules.some((x) => x.action.type === 'modifyHeaders' && x.condition.urlFilter === '||127.0.0.1^');
+                })
+            )
+            .toBe(true);
+
+        const manage = await openPanel('manage');
+        const manageAudit = await manage.evaluate(() => ({
+            xss: window.__xss ?? null,
+            injectedMedia: document.querySelectorAll('img, svg').length,
+            dynamicRows: document.querySelectorAll('#dynamic tbody tr').length,
+        }));
+        expect(manageAudit.xss).toBeNull();
+        expect(manageAudit.injectedMedia).toBe(0);
+        expect(manageAudit.dynamicRows).toBe(1);
+
+        const about = await openPanel('about');
+        const aboutAudit = await about.evaluate(() => ({
+            xss: window.__xss ?? null,
+            injectedMedia: document.querySelectorAll('img, svg').length,
+        }));
+        expect(aboutAudit.xss).toBeNull();
+        expect(aboutAudit.injectedMedia).toBe(0);
+
+        // Create a Group whose name contains HTML and CSS selector metacharacters
+        const hostileGroupName = `<img src=x onerror="window.__xss=7">"][data-x="`;
+        const groupsPanel = await openPanel('groups');
+        await groupsPanel.locator('#newname').fill(hostileGroupName);
+        await groupsPanel.locator('#addgroup').click();
+
+        const createdGroup = groupsPanel.locator('.group').filter({ hasText: hostileGroupName });
+        await expect(createdGroup).toHaveCount(1);
+        await expect(createdGroup.locator('.group-name')).toHaveText(hostileGroupName);
+        await createdGroup.locator('.neworigin').fill('https://cdn.example.com');
+        await createdGroup.locator('.addorigin').click();
+        await getSourceCheckbox(groupsPanel, 'https://cdn.example.com', 'img-src', 'table.sources').check();
+
+        const groupsAudit = await groupsPanel.evaluate(() => ({
+            xss: window.__xss ?? null,
+            injectedMedia: document.querySelectorAll('img, svg').length,
+        }));
+        expect(groupsAudit.xss).toBeNull();
+        expect(groupsAudit.injectedMedia).toBe(0);
+
+        // Verify Report panel renders the hostile group name safely in #trustgroup and applies it
+        await expect(report.locator('#trustgroup option')).toContainText([hostileGroupName]);
+        await report.locator('#trustgroup').selectOption(hostileGroupName);
+        await report.locator('#applygroup').click();
+        await expect
+            .poll(() =>
+                serviceWorker.evaluate(async () => {
+                    const rules = await chrome.declarativeNetRequest.getSessionRules();
+                    const r = rules.find((x) => x.action.type === 'modifyHeaders' && x.condition.urlFilter === '||127.0.0.1^');
+                    return r?.action.responseHeaders[0].value ?? '';
+                })
+            )
+            .toContain('https://cdn.example.com');
+
+        const finalReportAudit = await report.evaluate(() => ({
+            xss: window.__xss ?? null,
+            injectedMedia: document.querySelectorAll('img, svg').length,
+        }));
+        expect(finalReportAudit.xss).toBeNull();
+        expect(finalReportAudit.injectedMedia).toBe(0);
+        expect(errors).toEqual([]);
+        } finally {
+            context.off('page', onPage);
+        }
+    });
 });
