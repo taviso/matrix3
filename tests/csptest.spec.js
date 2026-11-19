@@ -1906,35 +1906,149 @@ test.describe('Deep-Dive Edge Cases & Regression Checks', () => {
         await waitForPanelIdle(report);
     });
 
-    test('3. cross-origin frame-src / object-src redirects (origin-sanitized blocked-uri) and #fragment redirect chains resolve to the final target', async ({
+    test('3. multi-hop #fragment redirect chains resolve to the final target end-to-end', async ({
+        serviceWorker,
+        testbench,
         openPanel,
     }) => {
-        const panel = await openPanel('options');
-        const redirectResult = await panel.evaluate(async () => {
+        await setDefaultPolicy(serviceWorker, 1);
+        await testbench.goto('http://127.0.0.1:8123/reset');
+
+        const report = await openPanel('report');
+        // Allow http://localhost:8123 in script-src so Hop 1 (/redirect) -> Hop 2 (localhost/redirect#frag1)
+        // is allowed, and only the final hop (https://cdn.jsdelivr.net/...#frag2) is blocked by script-src.
+        await testbench.evaluate(async () => {
+            await fetch('http://localhost:8123/dot.png').catch(() => {});
+        });
+        await getSourceCheckbox(report, 'http://localhost:8123', 'script-src').check();
+        await testbench.reload();
+
+        await testbench.evaluate(async () => {
+            const hop2 = 'http://localhost:8123/redirect?to=' +
+                encodeURIComponent('https://cdn.jsdelivr.net/npm/d3/%2Besm#frag2') +
+                '#frag1';
+            const hop1 = '/redirect?to=' + encodeURIComponent(hop2) + '#frag0';
+            await new Promise((resolve) => {
+                const s = document.createElement('script');
+                s.onload = s.onerror = resolve;
+                s.src = hop1;
+                document.head.appendChild(s);
+            });
+        });
+
+        await expect(await getSourceCheckbox(report, 'https://*.jsdelivr.net', 'script-src').locator()).toHaveClass(
+            /\bviolation\b/
+        );
+
+        // Cyclic redirect chain (A <-> B) terminates cleanly at the 20-hop cap
+        const cycleDirs = await report.evaluate(async () => {
             const { default: ViolationTracker } = await import('/include/tracker.js');
             const vt = new ViolationTracker();
             await vt.resetViolations(9997);
             await vt.addDocument(9997, 'doc-0', 'https://app.example.com/');
-
-            // Hop 1 -> Hop 2 (with a #fragment on Location) -> Final Target
-            await vt.addRedirect(9997, 'https://allowed-sso.example.com/login?next=1', 'https://hop2.example.net/auth#frag');
-            await vt.addRedirect(9997, 'https://hop2.example.net/auth', 'https://final-idp.example.org/saml');
-
-            // Chromium's RenderFrameHostCSPContext::SanitizeDataForUseInCspViolation strips cross-origin
-            // frame-src blocked-uri (url_before_redirects) down to its origin ("https://allowed-sso.example.com/").
+            await vt.addRedirect(9997, 'https://cycle-a.example.test/loop', 'https://cycle-b.example.test/loop');
+            await vt.addRedirect(9997, 'https://cycle-b.example.test/loop', 'https://cycle-a.example.test/loop');
             await vt.addTabViolation(9997, {
                 report: { 'document-uri': 'https://app.example.com/' },
-                directive: 'frame-src',
-                blocked: new URL('https://allowed-sso.example.com/'),
+                directive: 'connect-src',
+                blocked: new URL('https://cycle-a.example.test/loop'),
                 documentId: 'doc-0',
             });
-
             const dirs = await vt.getDirectives(9997, 'example.com');
             await vt.resetTab(9997);
-            return dirs['frame-src'] ?? [];
+            return dirs['connect-src'] ?? [];
+        });
+        expect(cycleDirs).toEqual(['https://*.example.test']);
+    });
+
+    test('3b. unrelated subresource redirect from an origin does not hijack frame-src or object-src violations on that origin', async ({
+        serviceWorker,
+        testbench,
+        openPanel,
+    }) => {
+        await setDefaultPolicy(serviceWorker, 1);
+        await testbench.goto('http://127.0.0.1:8123/reset');
+
+        const report = await openPanel('report');
+        // Allow http://localhost:8123 in script-src (so a script from localhost can 302-redirect to jsdelivr),
+        // while leaving http://localhost:8123 blocked in frame-src and object-src.
+        await testbench.evaluate(async () => {
+            await fetch('http://localhost:8123/dot.png').catch(() => {});
+        });
+        await getSourceCheckbox(report, 'http://localhost:8123', 'script-src').check();
+        await testbench.reload();
+
+        // 1. Load an allowed script from http://localhost:8123/redirect that 302-redirects to jsdelivr
+        await testbench.evaluate(async () => {
+            await new Promise((resolve) => {
+                const s = document.createElement('script');
+                s.onload = s.onerror = resolve;
+                s.src = 'http://localhost:8123/redirect?to=https://cdn.jsdelivr.net/npm/d3/%2Besm';
+                document.head.appendChild(s);
+            });
         });
 
-        expect(redirectResult).toEqual(['https://*.example.org']);
+        // 2. Direct (non-redirecting) cross-origin <iframe> and <object> to http://localhost:8123/frame.html
+        //    must report http://localhost:8123 in frame-src and object-src, NOT be hijacked by jsdelivr!
+        await testbench.evaluate(() => {
+            const ifr = document.createElement('iframe');
+            ifr.src = 'http://localhost:8123/frame.html';
+            document.body.appendChild(ifr);
+
+            const obj = document.createElement('object');
+            obj.data = 'http://localhost:8123/frame.html';
+            document.body.appendChild(obj);
+        });
+
+        await expect(await getSourceCheckbox(report, 'http://localhost:8123', 'frame-src').locator()).toHaveClass(
+            /\bviolation\b/
+        );
+        await expect(await getSourceCheckbox(report, 'http://localhost:8123', 'object-src').locator()).toHaveClass(
+            /\bviolation\b/
+        );
+        await expect(await getSourceCheckbox(report, 'https://*.jsdelivr.net', 'frame-src').locator()).not.toHaveClass(
+            /\bviolation\b/
+        );
+        await expect(await getSourceCheckbox(report, 'https://*.jsdelivr.net', 'object-src').locator()).not.toHaveClass(
+            /\bviolation\b/
+        );
+
+        // 3. Same-origin -> cross-origin sub_frame redirect (/redirect -> https://cdn.jsdelivr.net/...)
+        //    reports https://*.jsdelivr.net in frame-src
+        await testbench.evaluate(() => {
+            const ifr = document.createElement('iframe');
+            ifr.src = '/redirect?to=https://cdn.jsdelivr.net/npm/d3/%2Besm';
+            document.body.appendChild(ifr);
+        });
+        await expect(await getSourceCheckbox(report, 'https://*.jsdelivr.net', 'frame-src').locator()).toHaveClass(
+            /\bviolation\b/
+        );
+
+        // 4. Cross-origin -> cross-origin sub_frame and <object> redirects
+        //    (http://localhost:8123/redirect -> https://cdn.jsdelivr.net/...)
+        //    both report https://*.jsdelivr.net in frame-src (Chromium's browser-process
+        //    NavigationRequest::CheckCSPDirectives checks frame-src on <object> navigation redirects)
+        await getSourceCheckbox(report, 'http://localhost:8123', 'frame-src').check();
+        await getSourceCheckbox(report, 'http://localhost:8123', 'object-src').check();
+        await testbench.reload();
+        await testbench.evaluate(() => {
+            const ifr = document.createElement('iframe');
+            ifr.src = 'http://localhost:8123/redirect?to=https://cdn.jsdelivr.net/npm/d3/%2Besm';
+            document.body.appendChild(ifr);
+        });
+        await expect(await getSourceCheckbox(report, 'https://*.jsdelivr.net', 'frame-src').locator()).toHaveClass(
+            /\bviolation\b/
+        );
+
+        await testbench.reload();
+        await testbench.evaluate(() => {
+            const obj = document.createElement('object');
+            obj.data = 'http://localhost:8123/redirect?to=https://cdn.jsdelivr.net/npm/d3/%2Besm';
+            document.body.appendChild(obj);
+        });
+        await expect(await getSourceCheckbox(report, 'https://*.jsdelivr.net', 'frame-src').locator()).toHaveClass(
+            /\bviolation\b/
+        );
     });
 
     test('4. <fencedframe> violations (effective-directive: "fenced-frame-src") collapse to frame-src', async ({
