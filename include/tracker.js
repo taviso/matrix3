@@ -1,4 +1,5 @@
 import CspReport from '/include/cspreport.js'
+import Help from '/include/help.js'
 import Options from '/include/options.js'
 import Policy from '/include/policy.js'
 import * as psl from '/include/psl.js'
@@ -178,6 +179,13 @@ export default class ViolationTracker {
             if (u.port)
                 hostpart += `:${u.port}`;
             blocked = `${u.protocol}//${hostpart}`;
+            if (!Help.isValidSource(blocked))
+                blocked = u.protocol;
+        }
+
+        if (!Help.isValidSource(blocked)) {
+            console.warn("tracker", "rejecting invalid blocked source", blocked);
+            return false;
         }
 
         // Bucket by the document's scope so the panel can find it with the

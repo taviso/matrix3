@@ -17,7 +17,7 @@ scriptBadge.textContent = 'script: allowed';
 scriptBadge.className = 'badge allowed';
 
 const label = document.getElementById('frame-label');
-if (location.hostname && location.hostname !== '127.0.0.1') {
+if (location.hostname && location.hostname !== '127.0.0.1' && location.hostname !== '[::1]') {
   label.textContent = location.hostname;
 }
 

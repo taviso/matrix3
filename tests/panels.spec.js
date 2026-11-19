@@ -2399,4 +2399,204 @@ test.describe('Extension Panels, Buttons, and Options', () => {
         expect(finalHeader).toMatch(/(?:^|; )img-src 'none';/);
         expect(finalHeader).toMatch(/(?:^|; )worker-src 'self';/);
     });
+
+    test('IPv6 origins (http://[::1]:8123/): Report panel is active (not inert), tracks server CSP and violations, enforces ||[::1]^ dNR rules, and syncs rule:[::1]', async ({
+        serviceWorker,
+        testbench,
+        openPanel,
+    }) => {
+        await setDefaultPolicy(serviceWorker, 1);
+        await testbench.goto("http://[::1]:8123/?csp=script-src%20'nonce-test-nonce'");
+
+        const badges = await getOnloadBadges(testbench);
+        expect(badges['fetch-self']).toBe('Allowed');
+        expect(badges['fetch']).toBe('Blocked');
+
+        const report = await openPanel('report');
+
+        // 1. Report panel must not be inert on an IPv6 origin, and [::1] must be the active frame button
+        await expect(report.locator('body')).not.toHaveClass(/\binert\b/);
+        const originBtn = report.locator('#frames button[data-value="[::1]"]');
+        await expect(originBtn).toBeVisible();
+        await expect(originBtn).toHaveClass(/\bactive\b/);
+        await expect(originBtn).toHaveAttribute('data-origin', 'http://[::1]:8123');
+
+        // 2. Verify PSL IPv6 validation and RFC 5952 canonicalization (collapsing zero runs to ::, stripping leading zeros,
+        //    IPv4-mapped hex vs dotted-quad, RFC 6874 %25 zone IDs, and CSP source validation)
+        const pslResults = await report.evaluate(async () => {
+            const psl = await import('/include/psl.js');
+            const { default: Help } = await import('/include/help.js');
+            const { default: Policy } = await import('/include/policy.js');
+            return {
+                loopback: await psl.getScopedDomain('[::1]'),
+                expandedLoopback: await psl.getScopedDomain('[0:0:0:0:0:0:0:1]'),
+                unspecifiedUrl: URL.parse('http://[::]:80')?.hostname ?? null,
+                allZerosUrl: URL.parse('http://[0000:0000:0000:0000:0000:0000:0000:0000]:80')?.hostname ?? null,
+                unspecified: psl.getHostname('[::]'),
+                allZeros: psl.getHostname('[0000:0000:0000:0000:0000:0000:0000:0000]'),
+                expanded: psl.getHostname('[2001:0DB8:0000:0000:0000:0000:0000:0001]'),
+                singleZeroGroup: psl.getHostname('[2001:0db8:0:1:1:1:1:1]'),
+                longestRunWins: psl.getHostname('[2001:db8:0:0:1:0:0:0]'),
+                v4MappedFromUrl: await psl.getScopedDomain(new URL('http://[::ffff:127.0.0.1]:8123/').hostname),
+                v4MappedRawDotted: psl.getHostname('[::ffff:127.0.0.1]'),
+                zoneIdUrl: URL.parse('http://[fe80::1%25eth0]/')?.hostname ?? null,
+                zoneIdPsl: psl.getHostname('[fe80::1%25eth0]'),
+                doubleColon: psl.getHostname('[::1::1]'),
+                onlyColons: psl.getHostname('[::::]'),
+                tooLongGroup: psl.getHostname('[12345::1]'),
+                empty: psl.getHostname('[]'),
+                extraCloseBracket: psl.getHostname('[]]'),
+                extraOpenBracket: psl.getHostname('[[]'),
+                doubleBrackets: psl.getHostname('[[::1]]'),
+                trailingJunk: psl.getHostname('[::1]foo'),
+                ipv6WithPort: psl.getHostname('[::1]:8080'),
+                ipv6WithPort80: psl.getHostname('[::1]:80'),
+                ipv6TrailingColon: psl.getHostname('[::1]:'),
+                unbracketed: psl.getHostname('::1'),
+                bracketedDns: psl.getHostname('[example.com]'),
+                bracketedFqdnJunk: psl.getHostname('[x.af.]ff0_A1['),
+                bracketedIpv4: psl.getHostname('[127.0.0.1]'),
+                colonInDns: psl.getHostname('Ebf:LuijDdDTlUYOrwAn'),
+                colonBracket: psl.getHostname('aF1:['),
+                dnsWithPort: psl.getHostname('example.com:8080'),
+                dnsWithPort80: psl.getHostname('example.com:80'),
+                dnsTrailingColon: psl.getHostname('f:'),
+                leadingDotOnly: Help.isValidSource('https://.'),
+                leadingDotTld: Help.isValidSource('https://.com'),
+                leadingDotDomain: Help.isValidSource('https://.example.com'),
+                doubleTrailingDot: psl.getHostname('example.com..'),
+                numericDoubleDot: Help.isValidSource('https://8..'),
+                bogusIpv4Octets: psl.getHostname('999.999.999.999'),
+                fiveOctetNumeric: psl.getHostname('1.2.3.4.5'),
+                numericTld: psl.getHostname('xf4.2'),
+                nonsenseUrl: URL.parse('http://[]]/'),
+                cspSourceValid: Help.isValidSource('http://[::1]:8123'),
+                cspLeadingDotValid: Help.isValidSource('https://.example.com'),
+                cspTrailingDotValid: Help.isValidSource('https://example.com.'),
+                cspImportable: Policy.importableSource('http://[::1]:8123'),
+            };
+        });
+        expect(pslResults).toEqual({
+            loopback: '[::1]',
+            expandedLoopback: '[::1]',
+            unspecifiedUrl: '[::]',
+            allZerosUrl: '[::]',
+            unspecified: null,
+            allZeros: null,
+            expanded: '[2001:db8::1]',
+            singleZeroGroup: '[2001:db8:0:1:1:1:1:1]',
+            longestRunWins: '[2001:db8:0:0:1::]',
+            v4MappedFromUrl: '[::ffff:7f00:1]',
+            v4MappedRawDotted: '[::ffff:7f00:1]',
+            zoneIdUrl: null,
+            zoneIdPsl: null,
+            doubleColon: null,
+            onlyColons: null,
+            tooLongGroup: null,
+            empty: null,
+            extraCloseBracket: null,
+            extraOpenBracket: null,
+            doubleBrackets: null,
+            trailingJunk: null,
+            ipv6WithPort: null,
+            ipv6WithPort80: null,
+            ipv6TrailingColon: null,
+            unbracketed: null,
+            bracketedDns: null,
+            bracketedFqdnJunk: null,
+            bracketedIpv4: null,
+            colonInDns: null,
+            colonBracket: null,
+            dnsWithPort: null,
+            dnsWithPort80: null,
+            dnsTrailingColon: null,
+            leadingDotOnly: false,
+            leadingDotTld: false,
+            leadingDotDomain: false,
+            doubleTrailingDot: 'example.com',
+            numericDoubleDot: false,
+            bogusIpv4Octets: null,
+            fiveOctetNumeric: null,
+            numericTld: null,
+            nonsenseUrl: null,
+            cspSourceValid: false,
+            cspLeadingDotValid: false,
+            cspTrailingDotValid: false,
+            cspImportable: null,
+        });
+
+        // 3. Server CSP on [::1] is captured and displayed
+        await expect(report.locator('div#serverpolicy details')).toBeVisible();
+
+        // 4. Page-load violations on [::1] are attributed to [::1]
+        await expect.poll(() => getReportedViolations(report)).toEqual({
+            'data:': ['media-src'],
+            'https://*.github.com': ['connect-src'],
+            'https://*.google.com': ['script-src', 'media-src'],
+            'https://example.com': ['frame-src', 'manifest-src'],
+        });
+
+        // 5. Cross-origin IPv6 violation folds to scheme (http:) since CSP3 host-source grammar excludes IPv6 literals
+        const crossIpv6Blocked = await testbench.evaluate(() =>
+            fetch('http://[2001:db8::1]:8123/cookie-echo?cors=1').then(() => false, () => true)
+        );
+        expect(crossIpv6Blocked).toBe(true);
+        await expect(await getSourceCheckbox(report, 'http:', 'connect-src').locator()).toHaveClass(/\bviolation\b/);
+
+        // 6. Toggling checkboxes installs a session rule with urlFilter "||[::1]^" at L=1 priority (13, 14)
+        await getSourceCheckbox(report, 'https://*.github.com', 'connect-src').check();
+        await getSourceCheckbox(report, 'http:', 'connect-src').check();
+
+        const sessionFilter = await serviceWorker.evaluate(async () => {
+            const rules = await chrome.declarativeNetRequest.getSessionRules();
+            return rules
+                .filter((r) => r.condition.urlFilter === '||[::1]^')
+                .map((r) => `${r.action.type}:${r.priority}`)
+                .sort();
+        });
+        expect(sessionFilter).toEqual(['allow:13', 'modifyHeaders:14']);
+
+        // Navigating to the uncollapsed form http://[0:0:0:0:0:0:0:1]:8123/ canonicalizes to [::1] and matches ||[::1]^
+        await testbench.goto("http://[0:0:0:0:0:0:0:1]:8123/?csp=script-src%20'nonce-test-nonce'");
+        const reloadedBadges = await getOnloadBadges(testbench);
+        expect(reloadedBadges['fetch']).toBe('Allowed');
+        await expect(report.locator('#frames button[data-value="[::1]"]')).toHaveClass(/\bactive\b/);
+
+        const crossIpv6Allowed = await testbench.evaluate(() =>
+            fetch('http://[2001:0db8:0000:0000:0000:0000:0000:0001]:8123/cookie-echo?cors=1').then((r) => r.ok, () => false)
+        );
+        expect(crossIpv6Allowed).toBe(true);
+
+        // 7. Commit (promotes to dynamic L=1 priority 11, 12) and verify Cloud Sync Push/Pull preserves colons in rule:[::1]
+        await report.locator('#commit').click();
+        await expect
+            .poll(() =>
+                serviceWorker.evaluate(async () => {
+                    const rules = await chrome.declarativeNetRequest.getDynamicRules();
+                    return rules
+                        .filter((r) => r.condition.urlFilter === '||[::1]^')
+                        .map((r) => `${r.action.type}:${r.priority}`)
+                        .sort();
+                })
+            )
+            .toEqual(['allow:11', 'modifyHeaders:12']);
+
+        const syncRoundTrip = await report.evaluate(async () => {
+            const { RulesManager } = await import('/include/sidepanel.js');
+            await RulesManager.pushToCloud();
+            const cloudHosts = await RulesManager.getCloudRules();
+            await RulesManager.resetAllRules();
+            await RulesManager.pullFromCloud();
+            return {
+                cloudHosts,
+                restoredHosts: RulesManager.getRules().map((r) => r.host),
+                lookupHost: RulesManager.getHostRule('[::1]')?.host ?? null,
+            };
+        });
+        expect(syncRoundTrip).toEqual({
+            cloudHosts: ['[::1]'],
+            restoredHosts: ['[::1]'],
+            lookupHost: '[::1]',
+        });
+    });
 });

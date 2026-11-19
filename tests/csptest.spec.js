@@ -1826,7 +1826,7 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
             fqdnSubHost: 'sub.example.com',
             ipv4: '127.0.0.1',
             localhost: 'localhost',
-            ipv6Bracketed: null,
+            ipv6Bracketed: '[::1]',
             ipv6Bare: null,
             semicolonHost: null,
             commaHost: null,

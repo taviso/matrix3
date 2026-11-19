@@ -5,21 +5,26 @@ import { parse } from '/vendor/tldts.js';
 import Options from '/include/options.js'
 
 const kHostnameChars = new Set(
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_"
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_[:]"
 );
 
 function parseHost(host, options)
 {
     if (typeof host !== "string" || !new Set(host).isSubsetOf(kHostnameChars))
         return null;
-    let parsed = parse(host, {
+    let url = URL.parse(`http://${host}:80`);
+    if (!url)
+        return null;
+    let parsed = parse(url.hostname, {
         allowPrivateDomains: !!options?.privatedomains,
     });
+    if (parsed.isIp)
+        parsed.hostname = url.hostname;
     return parsed.hostname ? parsed : null;
 }
 
 // Returns the normalized, validated hostname for `host` (stripping any
-// trailing FQDN dot), or null if `host` is not a valid DNS/IPv4 hostname.
+// trailing FQDN dot), or null if `host` is not a valid DNS/IPv4/IPv6 hostname.
 export function getHostname(host)
 {
     return parseHost(host)?.hostname ?? null;

@@ -138,15 +138,19 @@ export const test = base.extend({
                 '--disable-background-timer-throttling',
                 '--disable-backgrounding-occluded-windows',
                 '--disable-renderer-backgrounding',
-                '--host-resolver-rules=MAP *.testbench.com 127.0.0.1, MAP testbench.com 127.0.0.1, MAP *.github.io 127.0.0.1, MAP github.io 127.0.0.1, MAP chromewebstore.google.com 127.0.0.1',
+                '--host-resolver-rules=MAP *.testbench.com 127.0.0.1, MAP testbench.com 127.0.0.1, MAP *.github.io 127.0.0.1, MAP github.io 127.0.0.1, MAP chromewebstore.google.com 127.0.0.1, MAP ::1 127.0.0.1, MAP 2001:db8::* 127.0.0.1',
             ],
         });
 
         // Stub external origins used by tools/index.html so "Allowed" probes
         // succeed deterministically offline without hitting real servers.
+        const kLocalHosts = new Set(['127.0.0.1', '[::1]', 'localhost']);
         await context.route(/^https?:\/\//, async (route) => {
             const url = new URL(route.request().url());
-            if (url.port === '8123' || url.hostname === '127.0.0.1' || url.hostname === 'localhost' || url.hostname.endsWith('.localhost')) {
+            if (url.port === '8123') {
+                return route.continue();
+            }
+            if (kLocalHosts.has(url.hostname) || url.hostname.endsWith('.localhost')) {
                 return route.continue();
             }
             const cors = { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' };

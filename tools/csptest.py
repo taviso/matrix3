@@ -4,10 +4,12 @@
     python3 tools/csptest.py [port]
 """
 
+import contextlib
 import html
 import http.server
 import json
 import os
+import socket
 import sys
 import urllib.parse
 from http import HTTPStatus
@@ -159,10 +161,26 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header('Expires', '0')
         super().end_headers()
 
+class DualStackServer(http.server.ThreadingHTTPServer):
+    address_family = socket.AF_INET6
+
+    def server_bind(self):
+        with contextlib.suppress(Exception):
+            self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        return super().server_bind()
+
+
+def create_server(port):
+    try:
+        return DualStackServer(('::', port), Handler)
+    except OSError:
+        return http.server.ThreadingHTTPServer(('127.0.0.1', port), Handler)
+
+
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
-    with http.server.ThreadingHTTPServer(('127.0.0.1', port), Handler) as server:
-        print(f'CSP testbench at http://127.0.0.1:{port}/')
+    with create_server(port) as server:
+        print(f'CSP testbench at http://127.0.0.1:{port}/ and http://[::1]:{port}/')
         try:
             server.serve_forever()
         except KeyboardInterrupt:
