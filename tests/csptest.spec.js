@@ -2097,4 +2097,24 @@ test.describe('Deep-Dive Edge Cases & Regression Checks', () => {
         });
         expect(sanitized).toBe("script-src 'self' https://cdn.jsdelivr.net; img-src 'self' data:;");
     });
+
+    test('7. installed service worker wakes back up cleanly after idle stop', async ({
+        context,
+        serviceWorker,
+        testbench,
+        openPanel,
+    }) => {
+        await setDefaultPolicy(serviceWorker, 4);
+        const cdp = await context.newCDPSession(testbench);
+        await cdp.send('ServiceWorker.enable');
+        await cdp.send('ServiceWorker.stopAllWorkers');
+
+        // Navigate after stopping the installed MV3 service worker; waking it from
+        // InstalledScriptsManager must succeed and record new violations.
+        await testbench.goto('http://127.0.0.1:8123/reset');
+        const report = await openPanel('report');
+        await expect(await getSourceCheckbox(report, "'unsafe-inline'", 'script-src').locator()).toHaveClass(
+            /\bviolation\b/
+        );
+    });
 });

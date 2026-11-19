@@ -1,4 +1,4 @@
-{
+export default {
   "sandbox": {
     "sandbox-enabled": "Isolate this origin in a sandbox, disabling scripts, cookies, forms, popups, and downloads.",
     "allow-downloads": "Allow the page to trigger file downloads.",

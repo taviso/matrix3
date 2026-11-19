@@ -1,4 +1,4 @@
-{
+export default {
   "directives": {
     "default-src": {
       "icon": "📌",

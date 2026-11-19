@@ -1,6 +1,6 @@
-import sourcesData from '/help/sources.json' with { type: 'json' };
-import directivesData from '/help/directives.json' with { type: 'json' };
-import sandboxData from '/help/sandbox.json' with { type: 'json' };
+import sourcesData from '/help/sources.js';
+import directivesData from '/help/directives.js';
+import sandboxData from '/help/sandbox.js';
 
 export default class Help {
     static sources = sourcesData.sources.map(h => ({ ...h, regex: new RegExp(h.regex) }));
