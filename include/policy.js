@@ -94,7 +94,7 @@ export default class Policy {
 
             // Per W3C, only the first occurrence of a directive is honored.
             if (directiveName in this.directives) {
-                console.warn("policy", "skipping duplicate directive", directiveName);
+                console.info("policy", "skipping duplicate directive", directiveName);
                 continue;
             }
 

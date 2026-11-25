@@ -146,7 +146,7 @@ export default class ViolationTracker {
             // Map them back to their CSP source keywords using the protocol.
             blocked = CspReport.protocolSource(blockedUrl.protocol);
             if (blocked === undefined) {
-                console.warn("tracker", "unknown blocked pseudo-scheme", blockedUrl);
+                console.info("tracker", "unknown blocked pseudo-scheme", blockedUrl);
                 return false;
             }
         } else if (blocked == origin) {
@@ -158,7 +158,7 @@ export default class ViolationTracker {
             const u = new URL(blocked);
             const scoped = await psl.getScopedDomain(u.hostname);
             if (!scoped) {
-                console.warn("tracker", "rejecting blocked origin with invalid hostname", u.hostname);
+                console.info("tracker", "rejecting blocked origin with invalid hostname", u.hostname);
                 return false;
             }
             let hostpart = scoped;
@@ -172,7 +172,7 @@ export default class ViolationTracker {
         }
 
         if (!Help.isValidSource(blocked)) {
-            console.warn("tracker", "rejecting invalid blocked source", blocked);
+            console.info("tracker", "rejecting invalid blocked source", blocked);
             return false;
         }
 

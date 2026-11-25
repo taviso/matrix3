@@ -59,7 +59,7 @@ pushElement.addEventListener("click", async () => {
         return;
     try {
         let count = await utils.callWithLock("cloud", () => RulesManager.pushToCloud());
-        console.log(`Successfully pushed ${count} dynamic rules to cloud.`);
+        console.info("export", `pushed ${count} dynamic rules to cloud`);
     } catch (e) {
         alert("Push failed: " + e.message);
     } finally {
@@ -72,7 +72,7 @@ pullElement.addEventListener("click", async () => {
         return;
     try {
         let count = await utils.callWithLock("cloud", () => RulesManager.pullFromCloud());
-        console.log(`Successfully pulled ${count} dynamic rules from cloud.`);
+        console.info("export", `pulled ${count} dynamic rules from cloud`);
     } catch (e) {
         alert("Pull failed: " + e.message);
     } finally {
