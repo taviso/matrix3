@@ -318,7 +318,7 @@ export default class ViolationTracker {
         await this.#state;
         let tab = this.#getOrCreateTab(tabId);
         let server = tab.server;
-        let domain = await psl.getScopedDomain(new URL(url).hostname);
+        let domain = await psl.getScopedDomain(URL.parse(url)?.hostname);
         if (!domain)
             return;
         if (this.#tabs.get(tabId) !== tab || tab.server !== server)
