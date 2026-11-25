@@ -7,7 +7,7 @@ This is matrix<sup>3</sup>, a minimalist content policy manager inspired by
 It looks like this -- it adds a sidepanel that lets you enable or disable web
 features for each site.
 
-[<img width="150" src="https://github.com/user-attachments/assets/86bc9ece-e87f-4942-84e1-ff83578c77bd" />](https://github.com/user-attachments/assets/86bc9ece-e87f-4942-84e1-ff83578c77bd)
+[<img width="200" src="https://github.com/user-attachments/assets/86bc9ece-e87f-4942-84e1-ff83578c77bd" />](https://github.com/user-attachments/assets/86bc9ece-e87f-4942-84e1-ff83578c77bd)
 
 There is built-in help, and an introduction available in the [wiki](https://github.com/taviso/matrix3/wiki/Getting-Started).
 
