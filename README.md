@@ -1,7 +1,7 @@
 
 # matrix³
 
-This is matrix<sup>3</sup>, an experimental content policy manager inspired by
+This is matrix<sup>3</sup>, a minimalist content policy manager inspired by
 [umatrix](https://github.com/gorhill/uMatrix), but built on `declarativeNetRequest`.
 
 It looks like this -- it adds a sidepanel that lets you enable or disable web
@@ -9,12 +9,7 @@ features for each site.
 
 <img width="303" src="https://github.com/user-attachments/assets/aaa3d687-cf5d-432a-b38b-f4b02454843a" />
 
-This extension provides an interface to `Content-Security-Policy`, so
-familiarity with the CSP3 specification is a bonus, but built-in **Help**
-includes examples for common tasks.
-
-There is more information available in the
-[wiki](https://github.com/taviso/matrix3/wiki/Getting-Started) and [FAQ](https://github.com/taviso/matrix3/wiki/Frequently-Asked-Questions).
+There is built-in help, and an introduction available in the [wiki](https://github.com/taviso/matrix3/wiki/Getting-Started).
 
 ## Installation
 
@@ -31,81 +26,13 @@ For the latest development version, follow these steps:
 ## Usage
 
 Open the sidepanel via the matrix<sup>3</sup> toolbar icon. If this is your first time
-using the extension, choose a default policy in the **Options** panel.
+using the extension, you can choose a default policy in the **Options** panel.
 
-If a site doesn't work, click the toolbar icon and open the **Report** panel.
-If the page embeds frames from other origins, each origin appears as a tab
-above the table. If you're using `sandbox`, try disabling it and see what
-resources the site requests.
+If a site doesn't work, click the toolbar icon and open the **Report** panel to
+troubleshoot site permissions.
 
 Any subresource the page requested that was denied is highlighted in orange.
 You can enable options until the site works, then click **Reload** to reload
 the tab.
 
-When you're happy with the settings, click **Commit** to make them persistent.
-
-### Suggested Policies
-
-If the server suggests its own policy, you can either **Accept** or **Merge**
-it with your own rules.
-
-This is entirely optional, you can also ignore what the server suggests.
-
-## Default Policies
-
-The default policy is **Permissive**, which means nothing is blocked by default
-until you configure specific rules.
-
-For example, if you want to block a site from using fonts, you could set
-`font-src` to `'none'`.
-
-If you find you want a more restrictive baseline, change the level in
-**Options**. The available policies are described below.
-
-### Permissive
-
-Nothing is blocked by default. If you want to reduce permissions for a specific
-site, you need to adjust it in the **Report** panel.
-
-### First Party
-
-First-party scripts and resources are generally allowed, along with third-party
-images, styles, and fonts. Third-party scripts are blocked unless you
-give them permission in the **Report** panel.
-
-### Sandbox + Scripts
-
-The `sandbox` attribute is applied to every document, which limits what sites
-are allowed to do. Some scripts and forms are allowed, but popups, downloads,
-and navigations are all blocked, and scripts run in a strict isolated origin.
-
-Many simple sites will work, but most complex sites will require exceptions in
-the **Report** panel.
-
-Cookies will *mostly* not work unless you enable "Allow Same Origin".
-
-### Sandbox
-
-The `sandbox` attribute is applied, with no exceptions.
-
-Simple static sites will work, but no dynamic features will function. Forms
-will not work without an exception.
-
-### Strict
-
-Effectively everything is disabled -- `default-src` is set to `'none'`.
-
-Only first-party styles and images are permitted, all other resources are
-blocked unless explicitly enabled.
-
-## Rules
-
-This extension provides an interface to *session* and *dynamic* rules, these
-are `declarativeNetRequest` concepts.
-
-A *dynamic* rule is **persistent** and is maintained when you restart Chrome.
-
-A *session* rule is **ephemeral** and discarded when you restart Chrome. This
-is the default, you must click **Commit** to make a rule *dynamic*.
-
-See the built-in **Help** panel for more information.
+When you're happy with the settings, click **Commit** to make your changes persistent.
