@@ -331,10 +331,42 @@ test.describe('Extension Panels, Buttons, and Options', () => {
         await expect(rulesPanel.locator('#session tr').first()).toBeHidden();
         await rulesPanel.locator('#filter').fill('127.0.0.1');
         await expect(rulesPanel.locator('#session tr').first()).toBeVisible();
+
+        // Add a second session rule and verify Select All / Invert ignore filtered-out (hidden) rows
+        await report.evaluate(async () => {
+            const { RulesManager } = await import('/include/sidepanel.js');
+            const { default: Policy } = await import('/include/policy.js');
+            await RulesManager.addSessionRule('other.test', new Policy("img-src 'self'"));
+        });
+        await expect(rulesPanel.locator('#session tr')).toHaveCount(2);
+        const row127 = rulesPanel.locator('#session tr').filter({ hasText: '127.0.0.1' });
+        const rowOther = rulesPanel.locator('#session tr').filter({ hasText: 'other.test' });
+        await expect(row127).toBeVisible();
+        await expect(rowOther).toBeHidden();
+
+        const sessionChk = row127.locator('input[type="checkbox"]');
+        const otherChk = rowOther.locator('input[type="checkbox"]');
+        await rulesPanel.locator('#selectsession').click();
+        await expect(sessionChk).toBeChecked();
+        await expect(otherChk).not.toBeChecked();
+
+        await rulesPanel.locator('#invertsession').click();
+        await expect(sessionChk).not.toBeChecked();
+        await expect(otherChk).not.toBeChecked();
+
+        // Filter to other.test and remove it, then clear the filter
+        await rulesPanel.locator('#filter').fill('other.test');
+        await expect(row127).toBeHidden();
+        await expect(rowOther).toBeVisible();
+        await rulesPanel.locator('#selectsession').click();
+        await expect(otherChk).toBeChecked();
+        await expect(sessionChk).not.toBeChecked();
+        await rulesPanel.locator('#removesession').click();
+        await expect(rulesPanel.locator('#session tr')).toHaveCount(1);
         await rulesPanel.locator('#filter').fill('');
+        await expect(row127).toBeVisible();
 
         // Select All & Invert on Session Rules
-        const sessionChk = rulesPanel.locator('#session tr input[type="checkbox"]').first();
         await expect(sessionChk).not.toBeChecked();
         await rulesPanel.locator('#selectsession').click();
         await expect(sessionChk).toBeChecked();

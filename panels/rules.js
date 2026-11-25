@@ -90,25 +90,18 @@ function getRuleRows(table) {
 }
 
 function selectAll(table) {
-    const filterText = document.getElementById('filter').value.toLowerCase();
-    getRuleRows(table)
-        .filter(r => r.textContent.toLowerCase().includes(filterText))
-        .forEach(r => r.checked = true);
+    getRuleRows(table).filter(r => !r.hidden).forEach(r => r.checked = true);
 }
 
 function invertSelection(table) {
-    const filterText = document.getElementById('filter').value.toLowerCase();
-    getRuleRows(table)
-        .filter(r => r.textContent.toLowerCase().includes(filterText))
-        .forEach(r => r.checked = !r.checked);
+    getRuleRows(table).filter(r => !r.hidden).forEach(r => r.checked = !r.checked);
 }
 
 function applyFilter() {
     const filterText = document.getElementById('filter').value.toLowerCase();
-    getRuleRows().forEach(r => r.hidden = false);
-    getRuleRows()
-        .filter(r => !r.textContent.toLowerCase().includes(filterText))
-        .forEach(r => r.hidden = true);
+    getRuleRows().forEach(r => {
+        r.hidden = !r.textContent.toLowerCase().includes(filterText);
+    });
 }
 
 document.getElementById('filter').addEventListener('input', applyFilter);
