@@ -773,6 +773,19 @@ test.describe('Extension Panels, Buttons, and Options', () => {
 
         expect(results).toEqual(['ok', 'ok', 'ok']);
 
+        // Immediately pushToCloud() from reportA (before NOTIFY_RULES necessarily arrives from manage's commit)
+        // and verify #exclusive resynced reportA's mirror so c.test is pushed to cloud.
+        const pushedCount = await reportA.evaluate(async () => {
+            const { RulesManager } = await import('/include/sidepanel.js');
+            return RulesManager.pushToCloud();
+        });
+        expect(pushedCount).toBe(1);
+        const cloudRules = await reportB.evaluate(async () => {
+            const { RulesManager } = await import('/include/sidepanel.js');
+            return RulesManager.getCloudRules();
+        });
+        expect(cloudRules).toEqual(['c.test']);
+
         const expected = ['dynamic:c.test', 'session:a.test', 'session:b.test'];
         expect(await liveRules()).toEqual([
             ['dynamic:c.test', expect.stringContaining("img-src 'self'")],

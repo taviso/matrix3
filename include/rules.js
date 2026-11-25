@@ -346,6 +346,10 @@ export default class Rules {
         return this.#exclusive(() => this.#replaceAllRules(session, dynamic));
     }
 
+    pushToCloud() {
+        return this.#exclusive(() => this.#pushToCloud());
+    }
+
     pullFromCloud() {
         return this.#exclusive(() => this.#pullFromCloud());
     }
@@ -617,7 +621,7 @@ export default class Rules {
     // options object automatically.
     // We're limited with how much data we're allowed to store in there, so keep
     // the representation simple.
-    async pushToCloud() {
+    async #pushToCloud() {
         let dynamic = this.getRules().filter(r => !r.isSession);
         let groups = structuredClone(await Options.getGroups());
         let storage = await chrome.storage.sync.get(null);
