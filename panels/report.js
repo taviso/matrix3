@@ -34,8 +34,9 @@ Object.defineProperties(originList, {
     value: {
         get() { return this.querySelector('button.active')?.dataset.value ?? ''; },
         set(v) {
-            this.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-            this.querySelector(`button[data-value="${v}"]`)?.classList.add('active');
+            this.querySelectorAll('button[data-value]').forEach(b => {
+                b.classList.toggle('active', b.dataset.value === v);
+            });
         }
     },
     origin: {
