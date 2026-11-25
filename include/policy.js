@@ -1,9 +1,7 @@
-// This class is just a simple representation of a csp policy.
 import Help from '/include/help.js'
 
-// Directives managed by matrix³; any other directives (e.g. legacy passthrough
-// directives like block-all-mixed-content, frame-ancestors, or trusted-types)
-// are left to the server's own CSP header and stripped from appended rules.
+// Directives managed by matrix³; we ignore other directives (like
+// block-all-mixed-content, frame-ancestors, or trusted-types)
 const kManagedDirectives = new Set([
     ...Object.keys(Help.directives),
     "report-uri",
@@ -13,6 +11,7 @@ const kManagedDirectives = new Set([
 const kNonceOrHashPrefix = /^'(?:nonce-|sha(?:256|384|512)-)/i;
 const kNoncePrefix = /^'nonce-/i;
 
+// This class is just a simple representation of a csp policy.
 export default class Policy {
     directives;
 
