@@ -1,3 +1,5 @@
+import Policy from '/include/policy.js'
+
 // Parser for intercepted csp_report requests.
 export default class CspReport {
     initiator;
@@ -12,8 +14,14 @@ export default class CspReport {
         if (uri === "") {
             // For frame-src, Chromium's SanitizeDataForUseInCspViolation calls
             // GURL::DeprecatedGetOriginAsURL(), which returns an empty URL for
-            // non-standard opaque schemes like data:.
-            return new URL("data:");
+            // non-standard schemes (data:, cross-origin blob:, or custom protocols).
+            let policy = new Policy(this.report["original-policy"]);
+            let sources = policy.getEffectiveSources(Policy.collapseDirective(this.directive));
+            if (!sources?.includes("data:"))
+                return new URL("data:");
+            if (!sources?.includes("blob:"))
+                return new URL("blob:");
+            return null;
         }
 
         // CSP keywords like 'inline' or 'eval' won't parse as URLs without a

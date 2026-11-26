@@ -377,6 +377,44 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
         await expect(testbench.locator('#badge-special')).toHaveText('Allowed');
     });
 
+    test('cross-origin blob: subframe navigation (SafeContentFrame) reports blob: instead of data: in frame-src', async ({ serviceWorker, testbench, openPanel }) => {
+        await setDefaultPolicy(serviceWorker, 1);
+        await testbench.reload();
+
+        const report = await openPanel('report');
+        await getSourceCheckbox(report, "'self'", 'frame-src').check();
+        await getSourceCheckbox(report, 'data:', 'frame-src').check();
+        await getSourceCheckbox(report, 'http:', 'frame-src').check();
+
+        await Promise.all([
+            testbench.waitForNavigation(),
+            report.locator('button#reload').click(),
+        ]);
+
+        await testbench.locator('#scheme-select').selectOption('frame:cross-blob');
+        await testbench.locator('#weird-schemes-btn').click();
+
+        await expect(await getSourceCheckbox(report, 'blob:', 'frame-src').locator()).toHaveClass(/violation/, { timeout: 3000 });
+        await expect(await getSourceCheckbox(report, 'data:', 'frame-src').locator()).not.toHaveClass(/violation/);
+
+        // Allowing blob: in frame-src lets the cross-origin SafeContentFrame blob: navigation succeed,
+        // and an unsupported custom scheme (frame:custom) does not falsely re-flag data: or blob:.
+        await getSourceCheckbox(report, 'blob:', 'frame-src').check();
+        await Promise.all([
+            testbench.waitForNavigation(),
+            report.locator('button#reload').click(),
+        ]);
+
+        await testbench.locator('#scheme-select').selectOption('frame:cross-blob');
+        await testbench.locator('#weird-schemes-btn').click();
+        await expect(testbench.frameLocator('#special-out iframe').locator('body')).toContainText('cross-origin blob: frame loaded');
+
+        await testbench.locator('#scheme-select').selectOption('frame:custom');
+        await testbench.locator('#weird-schemes-btn').click();
+        await expect(await getSourceCheckbox(report, 'data:', 'frame-src').locator()).not.toHaveClass(/violation/);
+        await expect(await getSourceCheckbox(report, 'blob:', 'frame-src').locator()).not.toHaveClass(/violation/);
+    });
+
     test('caps per-tab domains at 128, per-directive blocked sources at 1024, folds overflow into scheme, and rejects fakeprotocol:// spam', async ({
         serviceWorker,
         testbench,

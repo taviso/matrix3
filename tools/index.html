@@ -634,19 +634,23 @@
         case 'frame:about':
         case 'frame:data':
         case 'frame:blob':
+        case 'frame:cross-blob':
         case 'frame:javascript':
         case 'frame:custom': {
+          const port = location.port ? `:${location.port}` : '';
           const urls = {
             'frame:about': 'about:blank',
             'frame:data': 'data:text/html,<body style="font-family:sans-serif;margin:8px">data:text/html frame loaded</body>',
             'frame:blob': URL.createObjectURL(new Blob(['<body style="font-family:sans-serif;margin:8px">blob: frame loaded</body>'], { type: 'text/html' })),
+            'frame:cross-blob': `http://scf.localhost${port}/frame.html?blob=1&t=${Date.now()}`,
             'frame:javascript': 'javascript:"<body style=\'font-family:sans-serif;margin:8px\'>javascript: frame loaded</body>"',
             'frame:custom': 'web+custom://example.com/frame',
           };
           const notes = {
             'frame:about': 'Tests frame-src with about:blank.',
             'frame:data': 'Tests frame-src data:. Note: Chromium sanitizes non-standard frame-src blocked-uri to "", which matrix³ maps to data:.',
-            'frame:blob': 'Tests frame-src blob:.',
+            'frame:blob': 'Tests same-origin frame-src blob: (IsSameOriginWith is true, so Chromium reports blocked-uri: "blob").',
+            'frame:cross-blob': 'Cross-origin http://scf.localhost/frame.html?blob=1 navigates itself to a cross-origin blob: URL (like SafeContentFrame). Chromium sanitizes cross-origin blob: blocked-uri to "".',
             'frame:javascript': 'Tests frame navigation to a javascript: URI.',
             'frame:custom': 'Tests non-standard custom scheme in frame-src (Chromium strips blocked-uri to "", mapped to data:).',
           };
@@ -1464,7 +1468,8 @@
             <optgroup label="Frames (frame-src)">
               <option value="frame:about">Frame: about:blank</option>
               <option value="frame:data">Frame: data:text/html</option>
-              <option value="frame:blob">Frame: blob: URL</option>
+              <option value="frame:blob">Frame: blob: URL (same-origin)</option>
+              <option value="frame:cross-blob">Frame: blob: URL (cross-origin SafeContentFrame)</option>
               <option value="frame:javascript">Frame: javascript: URL</option>
               <option value="frame:custom">Frame: web+custom://example.com</option>
             </optgroup>

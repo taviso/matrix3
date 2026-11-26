@@ -49,6 +49,14 @@ document.getElementById('sw').addEventListener('click', () => {
     });
 });
 
+if (new URLSearchParams(location.search).has('blob')) {
+  const blob = new Blob(
+    ['<body style="font-family:sans-serif;margin:8px">cross-origin blob: frame loaded via location.replace(blob:)</body>'],
+    { type: 'text/html' }
+  );
+  location.replace(URL.createObjectURL(blob));
+}
+
 if (new URLSearchParams(location.search).has('fetch')) {
   out.textContent = 'fetch: pending...';
   out.className = 'badge pending';
