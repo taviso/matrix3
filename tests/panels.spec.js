@@ -717,6 +717,25 @@ test.describe('Extension Panels, Buttons, and Options', () => {
             .toBe(1);
     });
 
+    test('Rapid changes to the Options slider leave one default preset enabled', async ({ serviceWorker, openPanel }) => {
+        const panel = await openPanel('options');
+        await waitForPanelIdle(panel);
+        const slider = panel.locator('#defaultpolicy');
+        const enabledPresets = () => serviceWorker.evaluate(async () =>
+            (await chrome.declarativeNetRequest.getEnabledRulesets()).sort()
+        );
+
+        await expect(slider).toHaveValue('0');
+        await expect.poll(enabledPresets).toEqual(['base', 'permissive']);
+
+        await slider.focus();
+        await panel.keyboard.press('ArrowRight');
+        await panel.keyboard.press('End');
+
+        await expect(slider).toHaveValue('4');
+        await expect.poll(enabledPresets).toEqual(['base', 'strict']);
+    });
+
     test('Concurrent rule edits from multiple panels do not collide on rule IDs', async ({ serviceWorker, testbench, openPanel }) => {
         const reportA = await openPanel('report');
         const reportB = await openPanel('report');
