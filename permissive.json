@@ -16,6 +16,10 @@
         {
           "header": "Content-Security-Policy-Report-Only",
           "operation": "remove"
+        },
+        {
+          "header": "Speculation-Rules",
+          "operation": "remove"
         }
       ]
     },

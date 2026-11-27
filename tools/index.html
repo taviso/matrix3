@@ -187,6 +187,7 @@
       'Reporting-Endpoints': 'default="/report"',
       'Report-To': '{"group":"default","max_age":3600,"endpoints":[{"url":"/report"}]}',
       'Content-Security-Policy-Report-Only': "default-src 'none'; report-uri /report",
+      'Speculation-Rules': '"data:application/speculationrules+json,{\\"prefetch\\":[{\\"source\\":\\"list\\",\\"urls\\":[\\"/dot.png\\"]}]}"',
     };
 
     function syncHeaderBuilderState() {
@@ -948,6 +949,7 @@
           </optgroup>
           <optgroup label="Preloading &amp; Navigation Headers">
             <option value="Link">Link (preload / modulepreload)</option>
+            <option value="Speculation-Rules">Speculation-Rules (stripped by matrix³)</option>
             <option value="Refresh">Refresh</option>
             <option value="Clear-Site-Data">Clear-Site-Data</option>
           </optgroup>
@@ -1002,6 +1004,7 @@
             <option value="default=&quot;/report&quot;">default="/report"</option>
             <option value="{&quot;group&quot;:&quot;default&quot;,&quot;max_age&quot;:3600,&quot;endpoints&quot;:[{&quot;url&quot;:&quot;/report&quot;}]}">{"group":"default","max_age":3600,"endpoints":[{"url":"/report"}]}</option>
             <option value="default-src 'none'; report-uri /report">default-src 'none'; report-uri /report</option>
+            <option value="&quot;data:application/speculationrules+json,{\&quot;prefetch\&quot;:[{\&quot;source\&quot;:\&quot;list\&quot;,\&quot;urls\&quot;:[\&quot;/dot.png\&quot;]}]}&quot;">"data:application/speculationrules+json,…" (Speculation-Rules)</option>
           </optgroup>
           <optgroup label="Custom">
             <option value="__other__">Other (custom)…</option>

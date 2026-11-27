@@ -1802,6 +1802,48 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
         });
         expect(jsRefreshBlocked).toBe(false);
 
+        // 6. `Speculation-Rules:` HTTP response header (`DocumentSpeculationRules::From` / crbug.com/590725419):
+        //    Unlike `<script type="speculationrules">`, the `Speculation-Rules` HTTP header is not governed by
+        //    any CSP directive (even `default-src 'none'` or `sandbox`) and can evaluate arbitrary CSS selectors
+        //    (`where: { selector_matches: ... }`) to trigger prefetches. Verify rule 3 in `base.json` strips
+        //    `Speculation-Rules` from responses so no prefetch is triggered.
+        await setDefaultPolicy(serviceWorker, 4); // Strict (`default-src 'none'`)
+        await testbench.goto('http://127.0.0.1:8123/reset');
+        const specRulesPrefetches = [];
+        const onSpecRequest = (req) => {
+            if (req.url().includes('/frame.html?spec_prefetch=')) {
+                specRulesPrefetches.push({
+                    url: req.url(),
+                    secPurpose: req.headers()['sec-purpose'] ?? '',
+                });
+            }
+        };
+        testbench.on('request', onSpecRequest);
+        try {
+            const specRuleJson = JSON.stringify({
+                prefetch: [
+                    {
+                        source: 'document',
+                        where: { selector_matches: 'a[href*="spec_prefetch"]' },
+                        eagerness: 'immediate',
+                    },
+                    {
+                        source: 'list',
+                        urls: ['/frame.html?spec_prefetch=list'],
+                        eagerness: 'immediate',
+                    },
+                ],
+            });
+            const specHeaderVal = `"data:application/speculationrules+json;base64,${Buffer.from(specRuleJson).toString('base64')}"`;
+            await testbench.goto(
+                `http://127.0.0.1:8123/?hdr=Speculation-Rules&value=${encodeURIComponent(specHeaderVal)}`
+            );
+            await testbench.waitForTimeout(300);
+            expect(specRulesPrefetches).toEqual([]);
+        } finally {
+            testbench.off('request', onSpecRequest);
+        }
+
         await setDefaultPolicy(serviceWorker, 3);
         await testbench.goto('http://127.0.0.1:8123/reset');
         await testbench.evaluate(() => {
