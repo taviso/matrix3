@@ -479,6 +479,35 @@
       runWorkerCmd('Blob Worker (blob:)', URL.createObjectURL(blob), { cmd: 'import', param: kTestModule }, true);
     });
 
+    document.getElementById('worker-module-blob-btn').addEventListener('click', () => {
+      const label = 'Module Blob Worker (blob: static import)';
+      const blob = new Blob(
+        [`import ${JSON.stringify(kTestModule)}; self.postMessage("module blob worker: static import ok");`],
+        { type: 'text/javascript' }
+      );
+      const url = URL.createObjectURL(blob);
+      setWorkerResult('pending', 'Running', label, `Spawning Module Worker (${url.slice(0, 64)}) with static import ${kTestModule}...`);
+      try {
+        const w = new Worker(url, { type: 'module' });
+        w.addEventListener('message', (e) => {
+          setWorkerResult('allowed', 'Allowed', label, `${e.data} — worker-src allowed both blob: and ${kTestModule}.`);
+          URL.revokeObjectURL(url);
+        });
+        w.addEventListener('error', (e) => {
+          setWorkerResult(
+            'blocked',
+            'Blocked',
+            label,
+            `module worker error: ${e.message || 'blocked by worker-src'} — static module graph imports are checked against worker-src via OutsideSettingsCSPDelegate, which drops the CSP report (crbug.com/40612680)!`
+          );
+          URL.revokeObjectURL(url);
+        });
+      } catch (err) {
+        setWorkerResult('blocked', 'Blocked', label, `module worker creation blocked: ${err}`);
+        URL.revokeObjectURL(url);
+      }
+    });
+
     document.getElementById('worker-data-btn').addEventListener('click', async () => {
       const code = await (await fetch('/worker.js')).text();
       const dataUrl = 'data:text/javascript;charset=utf-8,' + encodeURIComponent(code);
@@ -1399,6 +1428,10 @@
       <button id="worker-blob-btn" class="action-btn" type="button">
         <span class="btn-title">Blob Worker (<code>blob:</code>)</span>
         <span class="btn-sub">Requires <code>worker-src blob:</code> &rarr; attributed via <code>initiator</code></span>
+      </button>
+      <button id="worker-module-blob-btn" class="action-btn" type="button">
+        <span class="btn-title">Module Blob Worker (<code>blob:</code> static <code>import</code>)</span>
+        <span class="btn-sub">Requires <code>worker-src blob:</code> + <code>jsdelivr</code> (no report: <code>crbug.com/40612680</code>)</span>
       </button>
       <button id="worker-data-btn" class="action-btn" type="button">
         <span class="btn-title">Data Worker (<code>data:</code>)</span>

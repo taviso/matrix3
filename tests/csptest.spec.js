@@ -334,6 +334,33 @@ test.describe('Interactive Testbench Probes: Workers, Contexts, Schemes, & Servi
         await expect(testbench.locator('#badge-shared-worker')).toHaveText('Terminated');
     });
 
+    // Disabled until Chromium ships DispatchWorkerCSPViolationEventForModuleGraphFetching (crbug.com/40612680).
+    test.skip('module blob: worker static import reports worker-src violation', async ({ serviceWorker, testbench, openPanel }) => {
+        await setDefaultPolicy(serviceWorker, 1);
+        await testbench.reload();
+
+        const report = await openPanel('report');
+        await getSourceCheckbox(report, "'self'", 'worker-src').check();
+        await getSourceCheckbox(report, 'blob:', 'worker-src').check();
+        await getSourceCheckbox(report, 'https://*.jsdelivr.net', 'script-src').check();
+        await Promise.all([
+            testbench.waitForNavigation(),
+            report.locator('button#reload').click(),
+        ]);
+
+        await testbench.locator('#worker-module-blob-btn').click();
+        await expect(testbench.locator('#badge-worker')).toHaveText('Blocked');
+        await expect(await getSourceCheckbox(report, 'https://*.jsdelivr.net', 'worker-src').locator()).toHaveClass(/violation/, { timeout: 3000 });
+
+        await getSourceCheckbox(report, 'https://*.jsdelivr.net', 'worker-src').check();
+        await Promise.all([
+            testbench.waitForNavigation(),
+            report.locator('button#reload').click(),
+        ]);
+        await testbench.locator('#worker-module-blob-btn').click();
+        await expect(testbench.locator('#badge-worker')).toHaveText('Allowed');
+    });
+
     test('<object> navigation CSP injection, 302 redirect resolution, srcdoc attribution, and special schemes', async ({ serviceWorker, testbench, openPanel }) => {
         await setDefaultPolicy(serviceWorker, 1);
         await testbench.reload();
