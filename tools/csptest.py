@@ -11,6 +11,7 @@ import json
 import os
 import socket
 import sys
+import threading
 import urllib.parse
 from http import HTTPStatus
 from pathlib import Path
@@ -82,6 +83,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.send_header('Content-Length', str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+            return
+        elif parsed.path == '/quit':
+            self.send_response(HTTPStatus.OK)
+            self.send_header('Content-Type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(b'ok\n')
+            self.wfile.flush()
+            threading.Timer(0.1, self.server.shutdown).start()
             return
         elif parsed.path == '/dot.png':
             Handler.last_subresource_cookie = self.headers.get('Cookie', '')
@@ -180,7 +189,9 @@ def create_server(port):
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
     with create_server(port) as server:
-        print(f'CSP testbench at http://127.0.0.1:{port}/ and http://[::1]:{port}/')
+        actual = server.server_address[1]
+        print(f'CSP testbench at http://127.0.0.1:{actual}/ and http://[::1]:{actual}/')
+        print(f'PORT={actual}', flush=True)
         try:
             server.serve_forever()
         except KeyboardInterrupt:
